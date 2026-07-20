@@ -127,13 +127,11 @@ async def require_auth(request: Request) -> None:
 # ----------------------------------------------------------------------
 # 配置总览（脱敏）
 # ----------------------------------------------------------------------
-async def get_config(request: Request, _: None = Depends(require_auth)):
+def _build_masked_config(request: Request) -> dict:
     config = _get_config(request)
-
     server = dict(config.get("server") or {})
     if server.get("master_key"):
         server["master_key"] = _mask_key(server["master_key"])
-
     safe_providers: dict[str, dict] = {}
     for name, p in _provider_items(request, config):
         safe: dict[str, Any] = {
@@ -142,18 +140,57 @@ async def get_config(request: Request, _: None = Depends(require_auth)):
             "keys": [_mask_key(k) for k in (p.get("keys") or [])],
             "models": list(p.get("models") or []),
         }
-        # 透传其余非敏感字段（如 timeout 等自定义项），但绝不透传原始 keys
         for k, v in p.items():
             if k not in safe and k not in ("name", "keys", "api_key", "key"):
                 safe[k] = v
         safe_providers[name] = safe
-
     return {
         "server": server,
         "providers": safe_providers,
         "aliases": dict(config.get("aliases") or {}),
         "rate_limit": dict(config.get("rate_limit") or {}),
+        "moa": dict(config.get("moa") or {}),
     }
+
+
+async def get_config(request: Request, _: None = Depends(require_auth)):
+    return _build_masked_config(request)
+
+
+async def get_config_raw(request: Request, _: None = Depends(require_auth)):
+    """未脱敏的完整配置（供管理页编辑用；受 require_auth 保护）。"""
+    return _to_plain(_get_config(request))
+
+
+def _apply_runtime(request: Request) -> None:
+    """配置保存后重建 providers / 密钥池 / master_key。"""
+    cfg = request.app.state.config
+    from .providers import build_providers
+    request.app.state.providers = build_providers(cfg.providers)
+    request.app.state.pool.sync(cfg.providers)
+    request.app.state.master_key = cfg.master_key
+
+
+async def put_config(request: Request, _: None = Depends(require_auth)):
+    """保存整份配置（管理页编辑后调用）。"""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail={"error": {"message": "请求体需为 JSON", "type": "invalid_request_error"}})
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail={"error": {"message": "配置需为 JSON 对象", "type": "invalid_request_error"}})
+    body.setdefault("server", {})
+    body.setdefault("providers", {})
+    body.setdefault("aliases", {})
+    body.setdefault("rate_limit", {})
+    body.setdefault("moa", {})
+    cfg = request.app.state.config
+    old_server = cfg.server
+    body["server"].setdefault("host", old_server.get("host", "0.0.0.0"))
+    body["server"].setdefault("port", old_server.get("port", 8080))
+    cfg.save(body)
+    _apply_runtime(request)
+    return _build_masked_config(request)
 
 
 # ----------------------------------------------------------------------
@@ -322,6 +359,8 @@ async def test_model(request: Request, _: None = Depends(require_auth)):
 # ----------------------------------------------------------------------
 for _prefix in ("", "/admin"):
     router.add_api_route(_prefix + "/api/config", get_config, methods=["GET"])
+    router.add_api_route(_prefix + "/api/config/raw", get_config_raw, methods=["GET"])
+    router.add_api_route(_prefix + "/api/config", put_config, methods=["PUT"])
     router.add_api_route(_prefix + "/api/usage/summary", usage_summary, methods=["GET"])
     router.add_api_route(_prefix + "/api/usage/recent", usage_recent, methods=["GET"])
     router.add_api_route(_prefix + "/api/health", health, methods=["GET"])

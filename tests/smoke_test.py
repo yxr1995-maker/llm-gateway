@@ -258,6 +258,17 @@ rate_limit:
             ok = {k: v.get("ok") for k, v in r.json().items()}
             check("admin health 三家 ok", all(ok.values()), str(ok))
 
+        # 14a admin 鉴权：master_key 非空时无 key 应 401
+        check("admin 无 key 401", httpx.get(f"{ADMIN}/config").status_code == 401)
+
+        # 14b 配置编辑：PUT /admin/api/config 增加别名，热生效
+        raw = httpx.get(f"{ADMIN}/config/raw", headers=h).json()
+        raw.setdefault("aliases", {})["extra"] = "openai/gpt-4o"
+        r = httpx.put(f"{ADMIN}/config", headers=h, json=raw)
+        check("PUT config 200", r.status_code == 200, str(r.status_code) + r.text[:120])
+        ids2 = {x["id"] for x in httpx.get(f"{BASE}/models", headers=h).json()["data"]}
+        check("配置编辑热生效(新别名可见)", "extra" in ids2, str(ids2))
+
         # 15 admin summary
         r = httpx.get(f"{ADMIN}/usage/summary?days=1", headers=h)
         check("admin summary calls>0", r.json().get("totals", {}).get("calls", 0) > 0, r.text[:120])

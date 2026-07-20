@@ -6,240 +6,133 @@
 <title>LLM Gateway 管理台</title>
 <style>
   :root {
-    --bg: #faf8f5;
-    --card: #ffffff;
-    --ink: #3a352f;
-    --muted: #8b8177;
-    --faint: #b5aca1;
-    --line: #e9e2d9;
-    --accent: #b4552d;
-    --accent-hover: #9c4a26;
-    --accent-soft: #f5e8df;
-    --ok: #5f7f57;
-    --ok-soft: #e9f0e6;
-    --bad: #a94442;
-    --bad-soft: #f6e7e5;
-    --radius: 10px;
-    --shadow: 0 1px 3px rgba(60, 50, 40, 0.07);
+    --bg: #faf8f5; --card: #ffffff; --ink: #3a352f; --muted: #8b8177; --faint: #b5aca1;
+    --line: #e9e2d9; --accent: #b4552d; --accent-hover: #9c4a26; --accent-soft: #f5e8df;
+    --ok: #5f7f57; --ok-soft: #e9f0e6; --bad: #a94442; --bad-soft: #f6e7e5;
+    --radius: 10px; --shadow: 0 1px 3px rgba(60, 50, 40, 0.07);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: var(--bg);
-    color: var(--ink);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    font-size: 14px;
-    line-height: 1.6;
-  }
+  body { background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; font-size: 14px; line-height: 1.6; }
   a { color: var(--accent); text-decoration: none; }
-
-  /* ---------- 顶栏 ---------- */
-  .topbar {
-    position: sticky; top: 0; z-index: 10;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 24px;
-    background: rgba(250, 248, 245, 0.92);
-    backdrop-filter: blur(6px);
-    border-bottom: 1px solid var(--line);
-  }
+  .topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; background: rgba(250, 248, 245, 0.92); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
   .brand { font-size: 16px; font-weight: 700; letter-spacing: 0.3px; }
   .brand span { color: var(--accent); font-weight: 600; margin-left: 4px; }
   .top-actions { display: flex; align-items: center; gap: 10px; }
-  .pill {
-    font-size: 12px; color: var(--muted);
-    border: 1px solid var(--line); border-radius: 999px;
-    padding: 2px 10px; background: var(--card);
-  }
+  .pill { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; background: var(--card); }
   .pill.on { color: var(--ok); border-color: #cfdccc; background: var(--ok-soft); }
-
+  .pill.warn { color: var(--bad); border-color: #e6c9c7; background: var(--bad-soft); }
   main { max-width: 1080px; margin: 0 auto; padding: 24px 20px 60px; }
-
-  /* ---------- 通用组件 ---------- */
-  .card {
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    padding: 20px 22px;
-    margin-bottom: 22px;
-  }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px 22px; margin-bottom: 22px; }
   .card h2 { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
   .card .desc { color: var(--muted); font-size: 12.5px; margin-bottom: 16px; }
-  .section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
-  .btn {
-    appearance: none; border: none; cursor: pointer;
-    background: var(--accent); color: #fff;
-    font-size: 13px; font-weight: 600;
-    padding: 8px 16px; border-radius: 8px;
-    transition: background 0.15s ease;
-  }
+  .section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .btn { appearance: none; border: none; cursor: pointer; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 8px; transition: background 0.15s ease; }
   .btn:hover { background: var(--accent-hover); }
   .btn:disabled { opacity: 0.55; cursor: not-allowed; }
-  .btn.ghost {
-    background: transparent; color: var(--accent);
-    border: 1px solid var(--accent);
-  }
+  .btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
   .btn.ghost:hover { background: var(--accent-soft); }
   .btn.small { padding: 4px 12px; font-size: 12.5px; }
+  .btn.danger { background: var(--bad); }
+  .btn.danger:hover { background: #8e3a39; }
   .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-  .seg button {
-    appearance: none; border: none; background: var(--card); color: var(--muted);
-    font-size: 12.5px; padding: 5px 14px; cursor: pointer;
-  }
+  .seg button { appearance: none; border: none; background: var(--card); color: var(--muted); font-size: 12.5px; padding: 5px 14px; cursor: pointer; }
   .seg button.active { background: var(--accent); color: #fff; }
-  select, input[type="password"], input[type="text"] {
-    font: inherit; color: var(--ink);
-    border: 1px solid var(--line); border-radius: 8px;
-    padding: 8px 12px; background: var(--card);
-    outline: none; min-width: 220px;
-  }
-  select:focus, input:focus { border-color: var(--accent); }
-
+  select, input[type="password"], input[type="text"], input[type="number"], textarea { font: inherit; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: var(--card); outline: none; width: 100%; }
+  select:focus, input:focus, textarea:focus { border-color: var(--accent); }
+  textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; resize: vertical; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--muted); font-weight: 600; font-size: 12px; white-space: nowrap; }
   tr:last-child td { border-bottom: none; }
   td.mono, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
-
-  .chip {
-    display: inline-block; margin: 2px 4px 2px 0; padding: 1px 9px;
-    border-radius: 999px; font-size: 12px;
-    background: var(--accent-soft); color: var(--accent-hover);
-  }
+  .chip { display: inline-block; margin: 2px 4px 2px 0; padding: 1px 9px; border-radius: 999px; font-size: 12px; background: var(--accent-soft); color: var(--accent-hover); }
   .chip.gray { background: #f1ede7; color: var(--muted); }
-
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
-  .dot.ok { background: var(--ok); }
-  .dot.bad { background: var(--bad); }
-  .dot.unknown { background: var(--faint); }
-
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); } .dot.unknown { background: var(--faint); }
   .empty { color: var(--faint); font-size: 13px; padding: 18px 0; text-align: center; }
   .error-text { color: var(--bad); font-size: 13px; }
-
-  /* ---------- 首屏 Key 输入 ---------- */
-  #auth-screen {
-    max-width: 420px; margin: 90px auto 0;
-    text-align: center;
-  }
-  #auth-screen h1 { font-size: 20px; margin-bottom: 6px; }
-  #auth-screen p { color: var(--muted); font-size: 13px; margin-bottom: 22px; }
-  #auth-screen form { display: flex; flex-direction: column; gap: 12px; }
-  #auth-screen input { width: 100%; text-align: center; }
-  #auth-error { min-height: 20px; }
-
-  /* ---------- 用量仪表盘 ---------- */
-  .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
-  .stat-card {
-    border: 1px solid var(--line); border-radius: var(--radius);
-    padding: 14px 16px; background: #fdfcfa;
-  }
-  .stat-card .num { font-size: 22px; font-weight: 700; color: var(--ink); }
-  .stat-card .label { font-size: 12px; color: var(--muted); margin-top: 2px; }
-
-  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-  .bar-label { width: 170px; flex-shrink: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .bar-track { flex: 1; height: 14px; background: #f1ede7; border-radius: 7px; overflow: hidden; }
-  .bar-fill { height: 100%; background: var(--accent); border-radius: 7px; min-width: 2px; transition: width 0.3s ease; }
-  .bar-num { width: 190px; flex-shrink: 0; font-size: 12px; color: var(--muted); text-align: right; }
-
-  .sub-title { font-size: 13px; font-weight: 700; color: var(--muted); margin: 18px 0 10px; }
-
-  /* ---------- 模型测试 ---------- */
-  .test-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-  .test-result {
-    margin-top: 14px; border: 1px solid var(--line); border-radius: var(--radius);
-    padding: 14px 16px; background: #fdfcfa; display: none;
-  }
-  .test-result.show { display: block; }
-  .test-result .meta { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
-  .test-result .reply { white-space: pre-wrap; word-break: break-word; }
-  .test-result.ok { border-color: #cfdccc; background: var(--ok-soft); }
-  .test-result.fail { border-color: #ecd0cd; background: var(--bad-soft); }
-
-  footer { text-align: center; color: var(--faint); font-size: 12px; padding: 20px 0 30px; }
+  .authbar { display: none; align-items: center; gap: 8px; padding: 10px 24px; background: var(--bad-soft); border-bottom: 1px solid #e6c9c7; }
+  .authbar input { max-width: 320px; }
+  .switch { position: relative; display: inline-block; width: 42px; height: 24px; vertical-align: middle; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; cursor: pointer; inset: 0; background: #ccc; border-radius: 24px; transition: 0.2s; }
+  .slider:before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: 0.2s; }
+  .switch input:checked + .slider { background: var(--ok); }
+  .switch input:checked + .slider:before { transform: translateX(18px); }
+  .subcard { border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 12px; background: #fdfbf8; }
+  .subcard h3 { font-size: 13px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .field { margin-bottom: 8px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  .row-inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity 0.3s; z-index: 50; }
+  .toast.show { opacity: 0.95; }
+  .toast.err { background: var(--bad); }
+  footer { text-align: center; color: var(--faint); font-size: 12px; padding: 20px; }
 </style>
 </head>
 <body>
-
-<header class="topbar">
-  <div class="brand">LLM Gateway<span>管理台</span></div>
+<div class="topbar">
+  <div class="brand">LLM <span>Gateway</span> 管理台</div>
   <div class="top-actions">
-    <span id="key-state" class="pill">未认证</span>
-    <button id="btn-change-key" class="btn ghost small">更换 Key</button>
+    <span id="auth-pill" class="pill">检测中…</span>
+    <button id="btn-refresh" class="btn ghost small">刷新</button>
   </div>
-</header>
+</div>
 
-<main>
-  <!-- 首屏：输入 master key -->
-  <section id="auth-screen" class="card" hidden>
-    <h1>输入 Master Key</h1>
-    <p>管理接口需要鉴权。Key 仅保存在本浏览器 localStorage 中。</p>
-    <form id="auth-form">
-      <input type="password" id="auth-input" placeholder="sk-local-..." autocomplete="off" autofocus>
-      <div id="auth-error" class="error-text"></div>
-      <button type="submit" class="btn">进入管理台</button>
-    </form>
-  </section>
+<div id="authbar" class="authbar">
+  <span>鉴权已开启，请输入 Master Key 进入：</span>
+  <input id="auth-input" type="password" placeholder="master key">
+  <button id="auth-submit" class="btn small">进入</button>
+  <span id="auth-error" class="error-text"></span>
+</div>
 
-  <div id="app" hidden>
+<main id="app">
+  <div class="card">
+    <h2>配置编辑</h2>
+    <div class="desc">直接在控制台增删改 Provider / 模型 / 别名 / MOA / 限流 / 鉴权，保存后即时热生效（无需重启）。密钥仅存于本机 config.yaml。</div>
+    <div id="editor"></div>
+  </div>
 
-    <!-- ① 配置总览 -->
-    <section class="card" id="sec-config">
-      <div class="section-head">
-        <div>
-          <h2>配置总览</h2>
-          <div class="desc">当前生效的 Provider、模型与别名映射（密钥已脱敏）</div>
-        </div>
-        <button id="btn-health" class="btn ghost small">健康检查</button>
+  <div class="card">
+    <div class="section-head">
+      <h2>配置总览</h2>
+      <button id="btn-health" class="btn ghost small">健康检查</button>
+    </div>
+    <div id="server-info"></div>
+    <h3 style="margin:16px 0 8px;font-size:13px;">Providers</h3>
+    <div id="providers-wrap"></div>
+    <h3 style="margin:16px 0 8px;font-size:13px;">别名</h3>
+    <div id="aliases-wrap"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-head">
+      <h2>用量仪表盘</h2>
+      <div class="seg" id="days-seg">
+        <button data-days="1">1天</button>
+        <button data-days="7" class="active">7天</button>
+        <button data-days="30">30天</button>
       </div>
-      <div id="server-info" style="margin-bottom:14px;"></div>
-      <div id="providers-wrap"></div>
-      <div class="sub-title">别名映射</div>
-      <div id="aliases-wrap"></div>
-    </section>
+    </div>
+    <div id="usage-summary"></div>
+    <h3 style="margin:16px 0 8px;font-size:13px;">最近调用</h3>
+    <div id="usage-recent"></div>
+  </div>
 
-    <!-- ② 用量仪表盘 -->
-    <section class="card" id="sec-usage">
-      <div class="section-head">
-        <div>
-          <h2>用量仪表盘</h2>
-          <div class="desc">按模型 / Provider 聚合的调用统计与最近调用明细</div>
-        </div>
-        <div style="display:flex; gap:10px; align-items:center;">
-          <div class="seg" id="days-seg">
-            <button data-days="1">近 1 天</button>
-            <button data-days="7" class="active">近 7 天</button>
-            <button data-days="30">近 30 天</button>
-          </div>
-          <button id="btn-refresh-usage" class="btn ghost small">刷新</button>
-        </div>
-      </div>
-      <div class="stat-cards" id="stat-cards"></div>
-      <div class="sub-title">按模型（调用次数）</div>
-      <div id="model-bars"></div>
-      <div class="sub-title">模型明细</div>
-      <div id="model-table-wrap"></div>
-      <div class="sub-title">按 Provider</div>
-      <div id="provider-table-wrap"></div>
-      <div class="sub-title">最近 50 条调用</div>
-      <div id="recent-wrap"></div>
-    </section>
-
-    <!-- ③ 模型测试 -->
-    <section class="card" id="sec-test">
-      <h2>模型测试</h2>
-      <div class="desc">通过网关自身向后端模型发送 “Say hi in one word”，验证链路是否可用</div>
-      <div class="test-row">
-        <select id="model-select"><option value="">加载中…</option></select>
-        <button id="btn-test" class="btn">发送测试</button>
-      </div>
-      <div id="test-result" class="test-result"></div>
-    </section>
-
+  <div class="card">
+    <h2>模型测试</h2>
+    <div class="desc">通过网关自身向后端模型发送 “Say hi in one word”，验证链路是否可用</div>
+    <div class="row-inline" style="margin-bottom:10px;">
+      <select id="model-select" style="max-width:360px;"><option value="">加载中…</option></select>
+      <button id="btn-test" class="btn">发送测试</button>
+    </div>
+    <div id="test-result"></div>
   </div>
 </main>
 
 <footer>llm-gateway · 本地管理页 · 数据仅保存在本机</footer>
+<div id="toast" class="toast"></div>
 
 <script>
 (function () {
@@ -247,341 +140,306 @@
   var LS_KEY = "llm_gateway_master_key";
   var masterKey = localStorage.getItem(LS_KEY) || "";
   var currentDays = 7;
+  var raw = null;  // 编辑中的完整配置（未脱敏）
+  var $ = function (s) { return document.querySelector(s); };
 
-  var $ = function (sel) { return document.querySelector(sel); };
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+  function fmtNum(n) { n = Number(n)||0; if (n>=1e6) return (n/1e6).toFixed(1)+"M"; if (n>=1e3) return (n/1e3).toFixed(1)+"k"; return String(n); }
+  function fmtTs(ts) { if (!ts) return "-"; var d=new Date(ts*1000), p=function(x){return String(x).padStart(2,"0");}; return (d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds()); }
+  function fmtRate(r) { return (Number(r||0)*100).toFixed(1)+"%"; }
+  function toast(msg, err) { var t=$("#toast"); t.textContent=msg; t.className="toast show"+(err?" err":""); setTimeout(function(){t.className="toast";}, 2200); }
 
-  function esc(s) {
-    return String(s == null ? "" : s)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-  }
-  function fmtNum(n) {
-    n = Number(n) || 0;
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
-    if (n >= 1000) return (n / 1000).toFixed(1) + "k";
-    return String(n);
-  }
-  function fmtTs(ts) {
-    if (!ts) return "-";
-    var d = new Date(ts * 1000);
-    var p = function (x) { return String(x).padStart(2, "0"); };
-    return (d.getMonth() + 1) + "-" + p(d.getDate()) + " " +
-      p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
-  }
-  function fmtRate(r) { return (Number(r || 0) * 100).toFixed(1) + "%"; }
-  function truncate(s, n) {
-    s = String(s || "");
-    return s.length > n ? s.slice(0, n) + "…" : s;
-  }
-
-  // ---------- API 封装 ----------
   function api(path, options) {
     options = options || {};
     var headers = options.headers || {};
     if (masterKey) headers["Authorization"] = "Bearer " + masterKey;
-    if (options.json !== undefined) {
-      headers["Content-Type"] = "application/json";
-      options.body = JSON.stringify(options.json);
-      delete options.json;
-    }
+    if (options.json !== undefined) { headers["Content-Type"]="application/json"; options.body=JSON.stringify(options.json); delete options.json; }
     options.headers = headers;
-    return fetch(path, options).then(function (resp) {
-      if (resp.status === 401) {
-        showAuth("Key 无效或已失效，请重新输入");
-        throw new Error("unauthorized");
-      }
-      if (!resp.ok) {
-        return resp.text().then(function (t) {
-          throw new Error("HTTP " + resp.status + ": " + t.slice(0, 200));
-        });
-      }
+    return fetch(path, options).then(function(resp){
+      if (resp.status === 401) { showAuthBar("Key 无效或已失效，请重新输入"); throw new Error("unauthorized"); }
+      if (!resp.ok) { return resp.text().then(function(t){ throw new Error("HTTP "+resp.status+": "+t.slice(0,200)); }); }
       return resp.json();
     });
   }
 
-  // ---------- 首屏 / 进入 ----------
-  function showAuth(msg) {
-    $("#app").hidden = true;
-    $("#auth-screen").hidden = false;
-    $("#key-state").textContent = "未认证";
-    $("#key-state").className = "pill";
+  function showAuthBar(msg) {
+    $("#authbar").style.display = "flex";
+    $("#auth-pill").textContent = "未认证"; $("#auth-pill").className = "pill warn";
     $("#auth-error").textContent = msg || "";
     $("#auth-input").focus();
   }
-  function enter() {
-    $("#auth-screen").hidden = true;
-    $("#app").hidden = false;
-    $("#key-state").textContent = "已认证";
-    $("#key-state").className = "pill on";
-    loadAll();
+  function setAuthPill(on) {
+    if (on) { $("#auth-pill").textContent = "鉴权已开启"; $("#auth-pill").className = "pill on"; }
+    else { $("#auth-pill").textContent = "免鉴权"; $("#auth-pill").className = "pill"; }
   }
 
-  $("#auth-form").addEventListener("submit", function (e) {
-    e.preventDefault();
+  $("#auth-submit").addEventListener("click", function(){
     var v = $("#auth-input").value.trim();
     if (!v) { $("#auth-error").textContent = "请输入 Master Key"; return; }
-    masterKey = v;
-    localStorage.setItem(LS_KEY, v);
-    $("#auth-input").value = "";
-    $("#auth-error").textContent = "";
-    enter();
+    masterKey = v; localStorage.setItem(LS_KEY, v);
+    $("#authbar").style.display = "none"; $("#auth-input").value = "";
+    init();
   });
-  $("#btn-change-key").addEventListener("click", function () {
-    localStorage.removeItem(LS_KEY);
-    masterKey = "";
-    showAuth("");
+  $("#auth-input").addEventListener("keydown", function(e){ if (e.key==="Enter") $("#auth-submit").click(); });
+  $("#btn-refresh").addEventListener("click", init);
+
+  function init() {
+    api("/admin/api/config/raw").then(function(cfg){
+      raw = cfg;
+      $("#authbar").style.display = "none";
+      setAuthPill(!!(cfg.server && cfg.server.master_key));
+      renderEditor();
+      loadOverview();
+      loadUsage();
+    }).catch(function(){ /* 401 已触发 showAuthBar */ });
+  }
+
+  // ---------------- 配置编辑器 ----------------
+  function ensureSections() {
+    raw.server = raw.server || {};
+    raw.providers = raw.providers || {};
+    raw.aliases = raw.aliases || {};
+    raw.moa = raw.moa || {};
+    raw.rate_limit = raw.rate_limit || {};
+  }
+  function renderEditor() {
+    ensureSections();
+    var s = raw.server || {}, rl = raw.rate_limit || {};
+    var authOn = !!s.master_key;
+    var html = '';
+
+    // 鉴权开关 + 限流
+    html += '<div class="subcard"><h3>鉴权与限流</h3>';
+    html += '<div class="row-inline" style="margin-bottom:10px;">';
+    html += '<label class="switch"><input id="ed-auth" type="checkbox" '+(authOn?'checked':'')+'><span class="slider"></span></label>';
+    html += '<span>开启 API 鉴权（master_key）；关闭后控制台与 /v1/* 均免认证（仅限本机）</span></div>';
+    html += '<div class="field" id="ed-key-wrap" '+(authOn?'':'style="display:none;"')+'>';
+    html += '<label>Master Key（留空则自动生成）</label>';
+    html += '<input id="ed-key" type="text" placeholder="sk-gw-..." value="'+esc(s.master_key||"")+'"></div>';
+    html += '<div class="field"><label>限流：每分钟请求数 / 调用方 key（0=不限）</label>';
+    html += '<input id="ed-rpm" type="number" value="'+esc(rl.requests_per_minute||0)+'"></div></div>';
+
+    // Providers
+    html += '<div class="subcard"><h3>Providers <button class="btn small" id="add-prov">+ 添加 Provider</button></h3>';
+    html += '<div id="prov-list"></div></div>';
+
+    // Aliases
+    html += '<div class="subcard"><h3>别名 <button class="btn small" id="add-alias">+ 添加别名</button></h3>';
+    html += '<div id="alias-list"></div></div>';
+
+    // MOA
+    html += '<div class="subcard"><h3>MOA 流水线 <button class="btn small" id="add-moa">+ 添加流水线</button></h3>';
+    html += '<div id="moa-list"></div></div>';
+
+    html += '<div class="row-inline" style="margin-top:6px;"><button class="btn" id="btn-save">保存配置</button>';
+    html += '<span class="error-text" id="save-msg"></span></div>';
+
+    $("#editor").innerHTML = html;
+    renderProvList(); renderAliasList(); renderMoaList();
+
+    $("#ed-auth").addEventListener("change", function(){ $("#ed-key-wrap").style.display = this.checked ? "" : "none"; });
+    $("#add-prov").addEventListener("click", function(){ var n="provider_"+Date.now(); raw.providers[n]={type:"openai_like",base_url:"",keys:[],models:[],supports_responses:false}; renderProvList(); });
+    $("#add-alias").addEventListener("click", function(){ var n="alias_"+Date.now(); raw.aliases[n]="provider/model"; renderAliasList(); });
+    $("#add-moa").addEventListener("click", function(){ var n="pipeline_"+Date.now(); raw.moa[n]={proposers:[{provider:"",model:""}],aggregator:{provider:"",model:""}}; renderMoaList(); });
+    $("#btn-save").addEventListener("click", saveConfig);
+  }
+
+  function provNames() { return Object.keys(raw.providers||{}); }
+  function renderProvList() {
+    var names = provNames();
+    if (!names.length) { $("#prov-list").innerHTML = '<div class="empty">未配置 Provider</div>'; return; }
+    var h = '';
+    names.forEach(function(name){
+      var p = raw.providers[name] || {};
+      h += '<div class="subcard" data-prov="'+esc(name)+'">';
+      h += '<h3><input class="ed-pname" data-old="'+esc(name)+'" type="text" value="'+esc(name)+'" style="max-width:200px;display:inline-block;">';
+      h += '<button class="btn danger small ed-pdel">删除</button></h3>';
+      h += '<div class="grid2"><div class="field"><label>类型</label><select class="ed-ptype">'+['openai_like','anthropic','gemini'].map(function(t){return '<option '+((p.type||'openai_like')===t?'selected':'')+'>'+t+'</option>';}).join('')+'</select></div>';
+      h += '<div class="field"><label>Base URL</label><input class="ed-purl" type="text" value="'+esc(p.base_url||'')+'"></div></div>';
+      h += '<div class="field"><label>密钥（每行一个）</label><textarea class="ed-pkeys" rows="2">'+esc((p.keys||[]).join('\n'))+'</textarea></div>';
+      h += '<div class="field"><label>模型（每行一个）</label><textarea class="ed-pmodels" rows="2">'+esc((p.models||[]).join('\n'))+'</textarea></div>';
+      h += '<div class="row-inline"><label class="switch"><input class="ed-pres" type="checkbox" '+(p.supports_responses?'checked':'')+'><span class="slider"></span></label><span>上游原生支持 /v1/responses（透传快路径）</span></div>';
+      h += '</div>';
+    });
+    $("#prov-list").innerHTML = h;
+  }
+  function renderAliasList() {
+    var names = Object.keys(raw.aliases||{});
+    if (!names.length) { $("#alias-list").innerHTML = '<div class="empty">未配置别名</div>'; return; }
+    var h = '';
+    names.forEach(function(a){
+      h += '<div class="row-inline" data-alias="'+esc(a)+'" style="margin-bottom:6px;">';
+      h += '<input class="ed-aname" data-old="'+esc(a)+'" type="text" value="'+esc(a)+'" style="max-width:180px;">';
+      h += '<span>→</span>';
+      h += '<input class="ed-atarget" type="text" value="'+esc(raw.aliases[a]||'')+'" placeholder="provider/model">';
+      h += '<button class="btn danger small ed-adel">删除</button></div>';
+    });
+    $("#alias-list").innerHTML = h;
+  }
+  function renderMoaList() {
+    var names = Object.keys(raw.moa||{});
+    if (!names.length) { $("#moa-list").innerHTML = '<div class="empty">未配置 MOA 流水线（model 填 moa:&lt;name&gt; 触发）</div>'; return; }
+    var pn = provNames();
+    function provOpts(sel){ return '<option value="">(选 provider)</option>'+pn.map(function(n){return '<option '+(sel===n?'selected':'')+'>'+esc(n)+'</option>';}).join(''); }
+    var h = '';
+    names.forEach(function(n){
+      var m = raw.moa[n] || {};
+      h += '<div class="subcard" data-moa="'+esc(n)+'">';
+      h += '<h3><input class="ed-mname" data-old="'+esc(n)+'" type="text" value="'+esc(n)+'" style="max-width:200px;display:inline-block;">';
+      h += '<button class="btn danger small ed-mdel">删除</button></h3>';
+      h += '<div class="field"><label>Proposers</label><div class="ed-props">';
+      (m.proposers||[]).forEach(function(pr, i){
+        h += '<div class="row-inline" style="margin-bottom:4px;" data-pi="'+i+'">';
+        h += '<select class="ed-pprov">'+provOpts(pr.provider)+'</select>';
+        h += '<input class="ed-pmodel" type="text" value="'+esc(pr.model||'')+'" placeholder="model" style="max-width:220px;">';
+        h += '<button class="btn danger small ed-ppdel">删</button></div>';
+      });
+      h += '</div><button class="btn ghost small ed-ppadd">+ proposer</button></div>';
+      var ag = m.aggregator || {};
+      h += '<div class="grid2"><div class="field"><label>Aggregator Provider</label><select class="ed-agprov">'+provOpts(ag.provider)+'</select></div>';
+      h += '<div class="field"><label>Aggregator Model</label><input class="ed-agmodel" type="text" value="'+esc(ag.model||'')+'"></div></div>';
+      h += '<div class="field"><label>综合提示（可选）</label><textarea class="ed-agprompt" rows="2">'+esc(m.aggregator_prompt||'')+'</textarea></div>';
+      h += '</div>';
+    });
+    $("#moa-list").innerHTML = h;
+  }
+
+  function saveConfig() {
+    // 收集 server
+    var authOn = $("#ed-auth").checked;
+    var key = $("#ed-key").value.trim();
+    if (authOn && !key) { key = "sk-gw-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2); }
+    raw.server.master_key = authOn ? key : "";
+    raw.rate_limit.requests_per_minute = parseInt($("#ed-rpm").value, 10) || 0;
+
+    // 收集 providers
+    var provs = {};
+    document.querySelectorAll("#prov-list .subcard").forEach(function(el){
+      var name = el.querySelector(".ed-pname").value.trim();
+      if (!name) return;
+      provs[name] = {
+        type: el.querySelector(".ed-ptype").value,
+        base_url: el.querySelector(".ed-purl").value.trim(),
+        keys: el.querySelector(".ed-pkeys").value.split("\n").map(function(s){return s.trim();}).filter(Boolean),
+        models: el.querySelector(".ed-pmodels").value.split("\n").map(function(s){return s.trim();}).filter(Boolean),
+        supports_responses: el.querySelector(".ed-pres").checked
+      };
+    });
+    raw.providers = provs;
+
+    // aliases
+    var al = {};
+    document.querySelectorAll("#alias-list .row-inline").forEach(function(el){
+      var a = el.querySelector(".ed-aname").value.trim();
+      var t = el.querySelector(".ed-atarget").value.trim();
+      if (a && t) al[a] = t;
+    });
+    raw.aliases = al;
+
+    // moa
+    var moa = {};
+    document.querySelectorAll("#moa-list .subcard").forEach(function(el){
+      var n = el.querySelector(".ed-mname").value.trim();
+      if (!n) return;
+      var props = [];
+      el.querySelectorAll(".ed-props .row-inline").forEach(function(p){
+        var pv = p.querySelector(".ed-pprov").value, mv = p.querySelector(".ed-pmodel").value.trim();
+        if (pv && mv) props.push({provider:pv, model:mv});
+      });
+      var ag = {provider: el.querySelector(".ed-agprov").value, model: el.querySelector(".ed-agmodel").value.trim()};
+      var entry = {proposers: props, aggregator: ag};
+      var ap = el.querySelector(".ed-agprompt").value;
+      if (ap && ap.trim()) entry.aggregator_prompt = ap.trim();
+      moa[n] = entry;
+    });
+    raw.moa = moa;
+
+    $("#save-msg").textContent = "保存中…";
+    api("/admin/api/config", {method:"PUT", json: raw}).then(function(){
+      // 同步本地鉴权状态
+      if (authOn) { masterKey = key; localStorage.setItem(LS_KEY, key); }
+      else { masterKey = ""; localStorage.removeItem(LS_KEY); }
+      setAuthPill(authOn);
+      $("#save-msg").textContent = "";
+      toast("配置已保存并热生效");
+      init();
+    }).catch(function(e){ $("#save-msg").textContent = "保存失败：" + e.message; toast("保存失败", true); });
+  }
+
+  // ---------------- 总览（脱敏） ----------------
+  function loadOverview() { api("/admin/api/config").then(renderOverview).catch(function(){}); }
+  function renderOverview(cfg) {
+    var s = cfg.server || {}, rl = cfg.rate_limit || {};
+    $("#server-info").innerHTML = '<table><tbody>' +
+      "<tr><th style='width:110px;'>监听</th><td class='mono'>"+esc(s.host||"-")+":"+esc(s.port||"-")+"</td></tr>" +
+      "<tr><th>Master Key</th><td class='mono'>"+(s.master_key?esc(s.master_key):'<span class="error-text">未设置（免鉴权）</span>')+"</td></tr>" +
+      "<tr><th>限流</th><td>"+(rl.requests_per_minute?esc(rl.requests_per_minute)+" 次/分钟/key":"不限流")+"</td></tr></tbody></table>";
+    var provs = cfg.providers || {}, names = Object.keys(provs);
+    if (!names.length) { $("#providers-wrap").innerHTML = '<div class="empty">未配置 Provider</div>'; }
+    else {
+      var ph='<table><thead><tr><th>Provider</th><th>类型</th><th>Base URL</th><th>密钥池</th><th>模型</th><th>健康</th></tr></thead><tbody>';
+      names.forEach(function(n){ var p=provs[n]||{};
+        var keys=(p.keys||[]).map(function(k){return '<span class="chip gray mono">'+esc(k)+'</span>';}).join("");
+        var models=(p.models||[]).map(function(m){return '<span class="chip">'+esc(m)+'</span>';}).join("");
+        ph+="<tr><td><strong>"+esc(n)+"</strong></td><td>"+esc(p.type||"-")+"</td><td class='mono'>"+esc(p.base_url||"-")+"</td><td>"+(keys||"-")+"</td><td>"+(models||"-")+"</td><td data-health='"+esc(n)+"'><span class='dot unknown'></span><span style='color:var(--muted);font-size:12px;'>未检测</span></td></tr>";
+      });
+      $("#providers-wrap").innerHTML = ph+"</tbody></table>";
+    }
+    var al=cfg.aliases||{}, an=Object.keys(al);
+    if (!an.length) { $("#aliases-wrap").innerHTML='<div class="empty">未配置别名</div>'; }
+    else { var ah='<table><thead><tr><th>别名</th><th>路由</th></tr></thead><tbody>'; an.forEach(function(a){ ah+='<tr><td class="mono"><strong>'+esc(a)+'</strong></td><td class="mono">'+esc(al[a])+'</td></tr>'; }); $("#aliases-wrap").innerHTML=ah+"</tbody></table>"; }
+    // model select
+    var sel=$("#model-select"), html="";
+    if (an.length){ html+='<optgroup label="别名">'; an.forEach(function(a){html+='<option value="'+esc(a)+'">'+esc(a)+" → "+esc(al[a])+'</option>';}); html+='</optgroup>'; }
+    Object.keys(provs).forEach(function(n){ var ms=(provs[n]||{}).models||[]; if(!ms.length)return; html+='<optgroup label="Provider: '+esc(n)+'">'; ms.forEach(function(m){html+='<option value="'+esc(m)+'">'+esc(n)+" / "+esc(m)+'</option>';}); html+='</optgroup>'; });
+    sel.innerHTML = html || '<option value="">(无可用模型)</option>';
+  }
+
+  $("#btn-health").addEventListener("click", function(){
+    api("/admin/api/health").then(function(res){
+      Object.keys(res).forEach(function(n){
+        var cell = document.querySelector('td[data-health="'+esc(n)+'"]'); if(!cell) return;
+        var r=res[n]; cell.innerHTML='<span class="dot '+(r.ok?'ok':'bad')+'"></span><span style="font-size:12px;">'+(r.ok?r.latency_ms+'ms':esc(r.error||'失败'))+'</span>';
+      });
+    }).catch(function(e){ toast("健康检查失败", true); });
   });
 
-  function loadAll() {
-    loadConfig();
-    loadUsage();
-  }
-
-  // ---------- ① 配置总览 ----------
-  function loadConfig() {
-    api("/admin/api/config").then(renderConfig).catch(function (e) {
-      if (e.message !== "unauthorized") {
-        $("#providers-wrap").innerHTML = '<div class="empty">配置加载失败：' + esc(e.message) + "</div>";
-      }
-    });
-  }
-
-  function renderConfig(cfg) {
-    var server = cfg.server || {};
-    var rl = cfg.rate_limit || {};
-    var html = '<table><tbody>' +
-      "<tr><th style='width:110px;'>监听地址</th><td class='mono'>" +
-        esc(server.host || "-") + ":" + esc(server.port || "-") + "</td></tr>" +
-      "<tr><th>Master Key</th><td class='mono'>" +
-        (server.master_key ? esc(server.master_key) : '<span class="error-text">未设置（网关无鉴权，公网部署请务必配置）</span>') + "</td></tr>" +
-      "<tr><th>限流</th><td>" +
-        (rl.requests_per_minute ? esc(rl.requests_per_minute) + " 次/分钟/key" : "不限流") + "</td></tr>" +
-      "</tbody></table>";
-    $("#server-info").innerHTML = html;
-
-    var providers = cfg.providers || {};
-    var names = Object.keys(providers);
-    if (!names.length) {
-      $("#providers-wrap").innerHTML = '<div class="empty">未配置任何 Provider</div>';
-    } else {
-      var ph = '<table id="providers-table"><thead><tr>' +
-        "<th>Provider</th><th>类型</th><th>Base URL</th><th>密钥池</th><th>模型</th><th>健康</th>" +
-        "</tr></thead><tbody>";
-      names.forEach(function (name) {
-        var p = providers[name] || {};
-        var keys = (p.keys || []).map(function (k) { return '<span class="chip gray mono">' + esc(k) + "</span>"; }).join("");
-        var models = (p.models || []).map(function (m) { return '<span class="chip">' + esc(m) + "</span>"; }).join("");
-        ph += "<tr><td><strong>" + esc(name) + "</strong></td>" +
-          "<td>" + esc(p.type || "-") + "</td>" +
-          '<td class="mono">' + esc(p.base_url || "-") + "</td>" +
-          "<td>" + (keys || "-") + "</td>" +
-          "<td>" + (models || "-") + "</td>" +
-          '<td data-health="' + esc(name) + '"><span class="dot unknown"></span><span class="h-text" style="color:var(--muted);font-size:12px;">未检测</span></td></tr>';
-      });
-      ph += "</tbody></table>";
-      $("#providers-wrap").innerHTML = ph;
-    }
-
-    var aliases = cfg.aliases || {};
-    var anames = Object.keys(aliases);
-    if (!anames.length) {
-      $("#aliases-wrap").innerHTML = '<div class="empty">未配置别名</div>';
-    } else {
-      var ah = '<table><thead><tr><th>别名（客户端使用）</th><th>实际路由</th></tr></thead><tbody>';
-      anames.forEach(function (a) {
-        ah += '<tr><td class="mono"><strong>' + esc(a) + '</strong></td><td class="mono">' + esc(aliases[a]) + "</td></tr>";
-      });
-      ah += "</tbody></table>";
-      $("#aliases-wrap").innerHTML = ah;
-    }
-
-    buildModelOptions(cfg);
-  }
-
-  function buildModelOptions(cfg) {
-    var sel = $("#model-select");
-    var html = "";
-    var aliases = cfg.aliases || {};
-    var anames = Object.keys(aliases);
-    if (anames.length) {
-      html += '<optgroup label="别名">';
-      anames.forEach(function (a) {
-        html += '<option value="' + esc(a) + '">' + esc(a) + " → " + esc(aliases[a]) + "</option>";
-      });
-      html += "</optgroup>";
-    }
-    var providers = cfg.providers || {};
-    Object.keys(providers).forEach(function (name) {
-      var models = (providers[name] || {}).models || [];
-      if (!models.length) return;
-      html += '<optgroup label="Provider: ' + esc(name) + '">';
-      models.forEach(function (m) {
-        html += '<option value="' + esc(m) + '">' + esc(name) + " / " + esc(m) + "</option>";
-      });
-      html += "</optgroup>";
-    });
-    sel.innerHTML = html || '<option value="">无可用模型</option>';
-  }
-
-  // ---------- 健康检查 ----------
-  $("#btn-health").addEventListener("click", function () {
-    var btn = this;
-    btn.disabled = true;
-    btn.textContent = "检测中…";
-    document.querySelectorAll("[data-health]").forEach(function (td) {
-      td.innerHTML = '<span class="dot unknown"></span><span class="h-text" style="color:var(--muted);font-size:12px;">检测中…</span>';
-    });
-    api("/admin/api/health").then(function (res) {
-      Object.keys(res || {}).forEach(function (name) {
-        var td = document.querySelector('[data-health="' + name + '"]');
-        if (!td) return;
-        var r = res[name] || {};
-        if (r.ok) {
-          td.innerHTML = '<span class="dot ok"></span><span class="h-text" style="font-size:12px;color:var(--ok);">正常 · ' + esc(r.latency_ms) + " ms</span>";
-        } else {
-          td.innerHTML = '<span class="dot bad"></span><span class="h-text" style="font-size:12px;color:var(--bad);" title="' +
-            esc(r.error || "") + '">异常 · ' + esc(truncate(r.error || "未知错误", 40)) + "</span>";
-        }
-      });
-    }).catch(function (e) {
-      if (e.message !== "unauthorized") alert("健康检查失败：" + e.message);
-    }).finally(function () {
-      btn.disabled = false;
-      btn.textContent = "健康检查";
-    });
-  });
-
-  // ---------- ② 用量仪表盘 ----------
-  $("#days-seg").addEventListener("click", function (e) {
-    var btn = e.target.closest("button");
-    if (!btn) return;
-    currentDays = Number(btn.dataset.days) || 7;
-    this.querySelectorAll("button").forEach(function (b) { b.classList.toggle("active", b === btn); });
-    loadUsage();
-  });
-  $("#btn-refresh-usage").addEventListener("click", loadUsage);
-
-  function loadUsage() {
-    api("/admin/api/usage/summary?days=" + currentDays).then(renderUsage).catch(function (e) {
-      if (e.message !== "unauthorized") $("#stat-cards").innerHTML = '<div class="empty">统计加载失败：' + esc(e.message) + "</div>";
-    });
-    api("/admin/api/usage/recent").then(renderRecent).catch(function () { /* 明细失败不影响聚合 */ });
-  }
-
-  function renderUsage(data) {
-    var t = (data && data.totals) || {};
-    var cards = [
-      { num: fmtNum(t.calls), label: "调用次数" },
-      { num: fmtNum(t.total_tokens), label: "Token 总量" },
-      { num: (t.avg_latency_ms || 0) + " ms", label: "平均延迟" },
-      { num: fmtRate(t.success_rate), label: "成功率" }
-    ];
-    $("#stat-cards").innerHTML = cards.map(function (c) {
-      return '<div class="stat-card"><div class="num">' + esc(c.num) + '</div><div class="label">' + esc(c.label) + "</div></div>";
-    }).join("");
-
-    var byModel = (data && data.by_model) || [];
-    if (!byModel.length) {
-      $("#model-bars").innerHTML = '<div class="empty">该时间段内暂无调用记录</div>';
-      $("#model-table-wrap").innerHTML = "";
-    } else {
-      var maxCalls = Math.max.apply(null, byModel.map(function (m) { return m.calls; }).concat([1]));
-      $("#model-bars").innerHTML = byModel.map(function (m) {
-        var pct = Math.max(2, Math.round(m.calls / maxCalls * 100));
-        return '<div class="bar-row" title="平均延迟 ' + esc(m.avg_latency_ms) + " ms · 成功率 " + esc(fmtRate(m.success_rate)) + '">' +
-          '<div class="bar-label mono">' + esc(m.model) + "</div>" +
-          '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div>' +
-          '<div class="bar-num">' + esc(m.calls) + " 次 · " + esc(fmtNum(m.total_tokens)) + " tok</div></div>";
-      }).join("");
-
-      var mh = '<table><thead><tr><th>模型</th><th>调用次数</th><th>Token 总量</th><th>平均延迟</th><th>成功率</th></tr></thead><tbody>';
-      byModel.forEach(function (m) {
-        mh += '<tr><td class="mono">' + esc(m.model) + "</td><td>" + esc(m.calls) + "</td><td>" +
-          esc(fmtNum(m.total_tokens)) + "</td><td>" + esc(m.avg_latency_ms) + " ms</td><td>" +
-          esc(fmtRate(m.success_rate)) + "</td></tr>";
-      });
-      mh += "</tbody></table>";
-      $("#model-table-wrap").innerHTML = mh;
-    }
-
-    var byProvider = (data && data.by_provider) || [];
-    if (!byProvider.length) {
-      $("#provider-table-wrap").innerHTML = '<div class="empty">暂无数据</div>';
-    } else {
-      var ph = '<table><thead><tr><th>Provider</th><th>调用次数</th><th>Token 总量</th><th>平均延迟</th><th>成功率</th></tr></thead><tbody>';
-      byProvider.forEach(function (p) {
-        ph += "<tr><td><strong>" + esc(p.provider) + "</strong></td><td>" + esc(p.calls) + "</td><td>" +
-          esc(fmtNum(p.total_tokens)) + "</td><td>" + esc(p.avg_latency_ms) + " ms</td><td>" +
-          esc(fmtRate(p.success_rate)) + "</td></tr>";
-      });
-      ph += "</tbody></table>";
-      $("#provider-table-wrap").innerHTML = ph;
+  // ---------------- 用量 ----------------
+  function loadUsage() { api("/admin/api/usage/summary?days="+currentDays).then(renderUsage); api("/admin/api/usage/recent").then(renderRecent); }
+  function renderUsage(d) {
+    var t=d.totals||{};
+    $("#usage-summary").innerHTML = '<table><tbody>' +
+      '<tr><th>调用次数</th><td>'+fmtNum(t.calls)+'</td><th>总 Token</th><td>'+fmtNum(t.total_tokens)+'</td></tr>' +
+      '<tr><th>Prompt</th><td>'+fmtNum(t.prompt_tokens)+'</td><th>Completion</th><td>'+fmtNum(t.completion_tokens)+'</td></tr>' +
+      '<tr><th>平均延迟</th><td>'+fmtNum(t.avg_latency_ms)+' ms</td><th>成功率</th><td>'+fmtRate(t.success_rate)+'</td></tr>' +
+      '</tbody></table>';
+    var by=d.by_model||[];
+    if (by.length) {
+      var h='<h3 style="margin:12px 0 8px;font-size:13px;">按模型</h3><table><thead><tr><th>模型</th><th>次数</th><th>Token</th><th>延迟</th><th>成功率</th></tr></thead><tbody>';
+      by.forEach(function(m){ h+='<tr><td class="mono">'+esc(m.model)+'</td><td>'+fmtNum(m.calls)+'</td><td>'+fmtNum(m.total_tokens)+'</td><td>'+fmtNum(m.avg_latency_ms)+'ms</td><td>'+fmtRate(m.success_rate)+'</td></tr>'; });
+      $("#usage-summary").innerHTML += h+'</tbody></table>';
     }
   }
-
   function renderRecent(rows) {
-    if (!rows || !rows.length) {
-      $("#recent-wrap").innerHTML = '<div class="empty">暂无调用记录</div>';
-      return;
-    }
-    var html = '<table><thead><tr>' +
-      "<th>时间</th><th>调用 Key</th><th>模型</th><th>Provider</th><th>Token(总)</th><th>延迟</th><th>状态</th><th>流式</th>" +
-      "</tr></thead><tbody>";
-    rows.forEach(function (r) {
-      var ok = r.status >= 200 && r.status < 300;
-      html += "<tr>" +
-        '<td class="mono">' + esc(fmtTs(r.ts)) + "</td>" +
-        '<td class="mono" title="' + esc(r.api_key) + '">' + esc(truncate(r.api_key, 10)) + "</td>" +
-        '<td class="mono">' + esc(r.model) + "</td>" +
-        "<td>" + esc(r.provider) + "</td>" +
-        "<td>" + esc(fmtNum(r.total_tokens)) + "</td>" +
-        "<td>" + esc(r.latency_ms) + " ms</td>" +
-        '<td><span class="dot ' + (ok ? "ok" : "bad") + '"></span>' + esc(r.status) + "</td>" +
-        "<td>" + (r.stream ? "是" : "否") + "</td></tr>";
-    });
-    html += "</tbody></table>";
-    $("#recent-wrap").innerHTML = html;
+    rows = rows.rows||rows||[];
+    if (!rows.length) { $("#usage-recent").innerHTML='<div class="empty">暂无调用记录</div>'; return; }
+    var h='<table><thead><tr><th>时间</th><th>模型</th><th>Provider</th><th>Token</th><th>延迟</th><th>状态</th><th>流式</th></tr></thead><tbody>';
+    rows.slice(0,50).forEach(function(r){ h+='<tr><td>'+fmtTs(r.ts)+'</td><td class="mono">'+esc(r.model)+'</td><td>'+esc(r.provider)+'</td><td>'+fmtNum(r.total_tokens)+'</td><td>'+fmtNum(r.latency_ms)+'ms</td><td>'+(r.status>=200&&r.status<300?'<span class="dot ok"></span>'+r.status:'<span class="dot bad"></span>'+r.status)+'</td><td>'+(r.stream?'是':'否')+'</td></tr>'; });
+    $("#usage-recent").innerHTML=h+'</tbody></table>';
   }
+  document.querySelectorAll("#days-seg button").forEach(function(b){ b.addEventListener("click", function(){ document.querySelectorAll("#days-seg button").forEach(function(x){x.classList.remove("active");}); b.classList.add("active"); currentDays=parseInt(b.dataset.days,10); loadUsage(); }); });
 
-  // ---------- ③ 模型测试 ----------
-  $("#btn-test").addEventListener("click", function () {
-    var model = $("#model-select").value;
-    if (!model) { alert("请先选择模型"); return; }
-    var btn = this;
-    var box = $("#test-result");
-    btn.disabled = true;
-    btn.textContent = "测试中…";
-    box.className = "test-result show";
-    box.innerHTML = '<div class="meta">正在请求模型 <span class="mono">' + esc(model) + "</span> …</div>";
-    api("/admin/api/test", { method: "POST", json: { model: model } }).then(function (r) {
-      if (r.ok) {
-        box.className = "test-result show ok";
-        box.innerHTML = '<div class="meta">模型 <span class="mono">' + esc(model) + "</span> · 延迟 " +
-          esc(r.latency_ms) + ' ms · <strong style="color:var(--ok);">成功</strong></div>' +
-          '<div class="reply">' + esc(r.reply || "(空回复)") + "</div>";
-      } else {
-        box.className = "test-result show fail";
-        box.innerHTML = '<div class="meta">模型 <span class="mono">' + esc(model) + "</span> · 延迟 " +
-          esc(r.latency_ms) + ' ms · <strong style="color:var(--bad);">失败</strong></div>' +
-          '<div class="reply error-text">' + esc(r.error || "未知错误") + "</div>";
-      }
-    }).catch(function (e) {
-      if (e.message !== "unauthorized") {
-        box.className = "test-result show fail";
-        box.innerHTML = '<div class="reply error-text">请求失败：' + esc(e.message) + "</div>";
-      }
-    }).finally(function () {
-      btn.disabled = false;
-      btn.textContent = "发送测试";
-    });
+  // ---------------- 模型测试 ----------------
+  $("#btn-test").addEventListener("click", function(){
+    var m=$("#model-select").value; if(!m){ toast("请选择模型", true); return; }
+    $("#test-result").innerHTML='<span class="error-text">测试中…</span>';
+    api("/admin/api/test", {method:"POST", json:{model:m}}).then(function(r){
+      if (r.ok) $("#test-result").innerHTML='<span class="dot ok"></span> '+r.latency_ms+'ms · 回复：'+esc(r.reply);
+      else $("#test-result").innerHTML='<span class="dot bad"></span> 失败：'+esc(r.error);
+    }).catch(function(e){ $("#test-result").innerHTML='<span class="dot bad"></span> '+esc(e.message); });
   });
 
-  // ---------- 启动 ----------
-  if (masterKey) {
-    enter();
-  } else {
-    showAuth("");
-  }
+  init();
 })();
 </script>
 </body>

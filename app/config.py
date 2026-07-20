@@ -50,6 +50,16 @@ class GatewayConfig:
         self._mtime = self.path.stat().st_mtime
         logger.info("配置已加载: %s", self.path)
 
+    def save(self, data: dict) -> None:
+        """把整份配置写回 config.yaml 并重载（管理页编辑后调用）。"""
+        text = yaml.safe_dump(data or {}, allow_unicode=True, sort_keys=False)
+        self.path.write_text(text, encoding="utf-8")
+        try:
+            self.path.chmod(0o600)
+        except OSError:
+            pass
+        self.load()
+
     def maybe_reload(self) -> bool:
         """若文件 mtime 变化则重载，返回是否发生了重载。"""
         try:
