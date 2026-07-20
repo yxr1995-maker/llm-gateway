@@ -8,6 +8,10 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
+import asyncio
+import json
+import time
+
 import httpx
 
 from . import ProviderBase, UpstreamError, get_client, register
@@ -62,7 +66,46 @@ class OpenAILikeProvider(ProviderBase):
         return await self._media_gen(model, body, api_key, self.image_path)
 
     async def video_gen(self, model: str, body: dict, api_key: str) -> "httpx.Response":
-        return await self._media_gen(model, body, api_key, self.video_path)
+        """Video generation with async-task polling.
+
+        Synchronous upstreams return {data:[{video_url}]} immediately. Async
+        upstreams (e.g. agnes) return a task object {task_id, status:queued};
+        we poll GET {video_path}/{task_id} until completed and wrap the result.
+        """
+        url = f"{self.base_url}/{self.video_path}"
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        payload = dict(body)
+        payload["model"] = model
+        client = get_client()
+        resp = await client.post(url, json=payload, headers=headers, timeout=self.timeout)
+        if resp.status_code >= 400:
+            return resp
+        data = resp.json()
+        if _extract_media_url(data, "video"):
+            return resp  # synchronous result
+        task_id = data.get("task_id") or data.get("id")
+        if task_id:
+            poll_url = f"{url}/{task_id}"
+            gh = {"Authorization": f"Bearer {api_key}"}
+            deadline = time.monotonic() + self.video_max_wait
+            while time.monotonic() < deadline:
+                await asyncio.sleep(self.video_poll_interval)
+                try:
+                    r = await client.get(poll_url, headers=gh, timeout=self.timeout)
+                except Exception:
+                    continue
+                if r.status_code >= 400:
+                    continue
+                d = r.json()
+                status = str(d.get("status") or "").lower()
+                if status in ("completed", "succeeded", "success"):
+                    vurl = _extract_media_url(d, "video")
+                    return httpx.Response(200, json={"data": [{"video_url": vurl or ""}], "task": d},
+                                          headers={"content-type": "application/json"})
+                if status in ("failed", "error", "canceled"):
+                    return httpx.Response(500, json={"error": {"message": f"video task {status}"}})
+            return httpx.Response(504, json={"error": {"message": "video task timed out"}})
+        return resp
 
     async def _stream(self, url: str, payload: dict, headers: dict) -> AsyncIterator[bytes]:
         """Streaming passthrough: stream as received, yielding bytes line by line (aiter_lines strips newlines, so re-add them)."""
@@ -100,3 +143,18 @@ class OpenAILikeProvider(ProviderBase):
                 url, json=payload, headers=headers, timeout=self.timeout
             )
         return self._stream(url, payload, headers)
+
+
+def _extract_media_url(d, kind: str) -> str:
+    if not isinstance(d, dict):
+        return ""
+    item = (d.get("data") or [{}])[0] if isinstance(d.get("data"), list) else {}
+    md = d.get("metadata") or {}
+    if kind == "image":
+        cands = [item.get("url"), item.get("b64_json"), d.get("url")]
+    else:
+        cands = [item.get("video_url"), item.get("url"), d.get("video_url"), d.get("url"), md.get("url")]
+    for c in cands:
+        if c:
+            return c
+    return ""

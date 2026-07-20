@@ -72,6 +72,8 @@ class ProviderBase:
         self.supports_responses: bool = False  # whether the upstream natively supports /v1/responses
         self.image_path: str = "images/generations"  # media generation endpoint paths
         self.video_path: str = "videos/generations"
+        self.video_poll_interval: float = 5.0   # async video task poll interval (s)
+        self.video_max_wait: float = 180.0       # async video task max wait (s)
 
     async def chat_completions(
         self, model: str, body: dict, api_key: str, stream: bool
@@ -106,6 +108,8 @@ def create_provider(name: str, cfg: dict) -> ProviderBase:
     provider.supports_responses = bool(cfg.get("supports_responses"))
     if cfg.get("image_path"): provider.image_path = cfg["image_path"]
     if cfg.get("video_path"): provider.video_path = cfg["video_path"]
+    if cfg.get("video_poll_interval"): provider.video_poll_interval = float(cfg["video_poll_interval"])
+    if cfg.get("video_max_wait"): provider.video_max_wait = float(cfg["video_max_wait"])
     if cfg.get("timeout"):
         try:
             provider.timeout = float(cfg["timeout"])
