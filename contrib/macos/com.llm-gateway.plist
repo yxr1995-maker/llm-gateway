@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.llm-gateway</string>
+    <!-- 注意：macOS TCC 会阻止 launchd 执行 ~/Documents、~/Desktop、~/Downloads
+         下的程序，请把仓库放在其他位置（如 ~/llm-gateway）并相应修改路径。 -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/YOUR_NAME/llm-gateway/contrib/macos/run_gateway.sh</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/YOUR_NAME/llm-gateway/data/gateway.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/YOUR_NAME/llm-gateway/data/gateway.err.log</string>
+    <key>WorkingDirectory</key>
+    <string>/Users/YOUR_NAME/llm-gateway</string>
+</dict>
+</plist>

@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Gateway 管理台</title>
+<style>
+  :root {
+    --bg: #faf8f5;
+    --card: #ffffff;
+    --ink: #3a352f;
+    --muted: #8b8177;
+    --faint: #b5aca1;
+    --line: #e9e2d9;
+    --accent: #b4552d;
+    --accent-hover: #9c4a26;
+    --accent-soft: #f5e8df;
+    --ok: #5f7f57;
+    --ok-soft: #e9f0e6;
+    --bad: #a94442;
+    --bad-soft: #f6e7e5;
+    --radius: 10px;
+    --shadow: 0 1px 3px rgba(60, 50, 40, 0.07);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  a { color: var(--accent); text-decoration: none; }
+
+  /* ---------- 顶栏 ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 24px;
+    background: rgba(250, 248, 245, 0.92);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { font-size: 16px; font-weight: 700; letter-spacing: 0.3px; }
+  .brand span { color: var(--accent); font-weight: 600; margin-left: 4px; }
+  .top-actions { display: flex; align-items: center; gap: 10px; }
+  .pill {
+    font-size: 12px; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 2px 10px; background: var(--card);
+  }
+  .pill.on { color: var(--ok); border-color: #cfdccc; background: var(--ok-soft); }
+
+  main { max-width: 1080px; margin: 0 auto; padding: 24px 20px 60px; }
+
+  /* ---------- 通用组件 ---------- */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 20px 22px;
+    margin-bottom: 22px;
+  }
+  .card h2 { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  .card .desc { color: var(--muted); font-size: 12.5px; margin-bottom: 16px; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .btn {
+    appearance: none; border: none; cursor: pointer;
+    background: var(--accent); color: #fff;
+    font-size: 13px; font-weight: 600;
+    padding: 8px 16px; border-radius: 8px;
+    transition: background 0.15s ease;
+  }
+  .btn:hover { background: var(--accent-hover); }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  .btn.ghost {
+    background: transparent; color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+  .btn.ghost:hover { background: var(--accent-soft); }
+  .btn.small { padding: 4px 12px; font-size: 12.5px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button {
+    appearance: none; border: none; background: var(--card); color: var(--muted);
+    font-size: 12.5px; padding: 5px 14px; cursor: pointer;
+  }
+  .seg button.active { background: var(--accent); color: #fff; }
+  select, input[type="password"], input[type="text"] {
+    font: inherit; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 12px; background: var(--card);
+    outline: none; min-width: 220px;
+  }
+  select:focus, input:focus { border-color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td.mono, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+
+  .chip {
+    display: inline-block; margin: 2px 4px 2px 0; padding: 1px 9px;
+    border-radius: 999px; font-size: 12px;
+    background: var(--accent-soft); color: var(--accent-hover);
+  }
+  .chip.gray { background: #f1ede7; color: var(--muted); }
+
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .dot.ok { background: var(--ok); }
+  .dot.bad { background: var(--bad); }
+  .dot.unknown { background: var(--faint); }
+
+  .empty { color: var(--faint); font-size: 13px; padding: 18px 0; text-align: center; }
+  .error-text { color: var(--bad); font-size: 13px; }
+
+  /* ---------- 首屏 Key 输入 ---------- */
+  #auth-screen {
+    max-width: 420px; margin: 90px auto 0;
+    text-align: center;
+  }
+  #auth-screen h1 { font-size: 20px; margin-bottom: 6px; }
+  #auth-screen p { color: var(--muted); font-size: 13px; margin-bottom: 22px; }
+  #auth-screen form { display: flex; flex-direction: column; gap: 12px; }
+  #auth-screen input { width: 100%; text-align: center; }
+  #auth-error { min-height: 20px; }
+
+  /* ---------- 用量仪表盘 ---------- */
+  .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .stat-card {
+    border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 14px 16px; background: #fdfcfa;
+  }
+  .stat-card .num { font-size: 22px; font-weight: 700; color: var(--ink); }
+  .stat-card .label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .bar-label { width: 170px; flex-shrink: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { flex: 1; height: 14px; background: #f1ede7; border-radius: 7px; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--accent); border-radius: 7px; min-width: 2px; transition: width 0.3s ease; }
+  .bar-num { width: 190px; flex-shrink: 0; font-size: 12px; color: var(--muted); text-align: right; }
+
+  .sub-title { font-size: 13px; font-weight: 700; color: var(--muted); margin: 18px 0 10px; }
+
+  /* ---------- 模型测试 ---------- */
+  .test-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .test-result {
+    margin-top: 14px; border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 14px 16px; background: #fdfcfa; display: none;
+  }
+  .test-result.show { display: block; }
+  .test-result .meta { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+  .test-result .reply { white-space: pre-wrap; word-break: break-word; }
+  .test-result.ok { border-color: #cfdccc; background: var(--ok-soft); }
+  .test-result.fail { border-color: #ecd0cd; background: var(--bad-soft); }
+
+  footer { text-align: center; color: var(--faint); font-size: 12px; padding: 20px 0 30px; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">LLM Gateway<span>管理台</span></div>
+  <div class="top-actions">
+    <span id="key-state" class="pill">未认证</span>
+    <button id="btn-change-key" class="btn ghost small">更换 Key</button>
+  </div>
+</header>
+
+<main>
+  <!-- 首屏：输入 master key -->
+  <section id="auth-screen" class="card" hidden>
+    <h1>输入 Master Key</h1>
+    <p>管理接口需要鉴权。Key 仅保存在本浏览器 localStorage 中。</p>
+    <form id="auth-form">
+      <input type="password" id="auth-input" placeholder="sk-local-..." autocomplete="off" autofocus>
+      <div id="auth-error" class="error-text"></div>
+      <button type="submit" class="btn">进入管理台</button>
+    </form>
+  </section>
+
+  <div id="app" hidden>
+
+    <!-- ① 配置总览 -->
+    <section class="card" id="sec-config">
+      <div class="section-head">
+        <div>
+          <h2>配置总览</h2>
+          <div class="desc">当前生效的 Provider、模型与别名映射（密钥已脱敏）</div>
+        </div>
+        <button id="btn-health" class="btn ghost small">健康检查</button>
+      </div>
+      <div id="server-info" style="margin-bottom:14px;"></div>
+      <div id="providers-wrap"></div>
+      <div class="sub-title">别名映射</div>
+      <div id="aliases-wrap"></div>
+    </section>
+
+    <!-- ② 用量仪表盘 -->
+    <section class="card" id="sec-usage">
+      <div class="section-head">
+        <div>
+          <h2>用量仪表盘</h2>
+          <div class="desc">按模型 / Provider 聚合的调用统计与最近调用明细</div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <div class="seg" id="days-seg">
+            <button data-days="1">近 1 天</button>
+            <button data-days="7" class="active">近 7 天</button>
+            <button data-days="30">近 30 天</button>
+          </div>
+          <button id="btn-refresh-usage" class="btn ghost small">刷新</button>
+        </div>
+      </div>
+      <div class="stat-cards" id="stat-cards"></div>
+      <div class="sub-title">按模型（调用次数）</div>
+      <div id="model-bars"></div>
+      <div class="sub-title">模型明细</div>
+      <div id="model-table-wrap"></div>
+      <div class="sub-title">按 Provider</div>
+      <div id="provider-table-wrap"></div>
+      <div class="sub-title">最近 50 条调用</div>
+      <div id="recent-wrap"></div>
+    </section>
+
+    <!-- ③ 模型测试 -->
+    <section class="card" id="sec-test">
+      <h2>模型测试</h2>
+      <div class="desc">通过网关自身向后端模型发送 “Say hi in one word”，验证链路是否可用</div>
+      <div class="test-row">
+        <select id="model-select"><option value="">加载中…</option></select>
+        <button id="btn-test" class="btn">发送测试</button>
+      </div>
+      <div id="test-result" class="test-result"></div>
+    </section>
+
+  </div>
+</main>
+
+<footer>llm-gateway · 本地管理页 · 数据仅保存在本机</footer>
+
+<script>
+(function () {
+  "use strict";
+  var LS_KEY = "llm_gateway_master_key";
+  var masterKey = localStorage.getItem(LS_KEY) || "";
+  var currentDays = 7;
+
+  var $ = function (sel) { return document.querySelector(sel); };
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function fmtNum(n) {
+    n = Number(n) || 0;
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+    if (n >= 1000) return (n / 1000).toFixed(1) + "k";
+    return String(n);
+  }
+  function fmtTs(ts) {
+    if (!ts) return "-";
+    var d = new Date(ts * 1000);
+    var p = function (x) { return String(x).padStart(2, "0"); };
+    return (d.getMonth() + 1) + "-" + p(d.getDate()) + " " +
+      p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+  function fmtRate(r) { return (Number(r || 0) * 100).toFixed(1) + "%"; }
+  function truncate(s, n) {
+    s = String(s || "");
+    return s.length > n ? s.slice(0, n) + "…" : s;
+  }
+
+  // ---------- API 封装 ----------
+  function api(path, options) {
+    options = options || {};
+    var headers = options.headers || {};
+    if (masterKey) headers["Authorization"] = "Bearer " + masterKey;
+    if (options.json !== undefined) {
+      headers["Content-Type"] = "application/json";
+      options.body = JSON.stringify(options.json);
+      delete options.json;
+    }
+    options.headers = headers;
+    return fetch(path, options).then(function (resp) {
+      if (resp.status === 401) {
+        showAuth("Key 无效或已失效，请重新输入");
+        throw new Error("unauthorized");
+      }
+      if (!resp.ok) {
+        return resp.text().then(function (t) {
+          throw new Error("HTTP " + resp.status + ": " + t.slice(0, 200));
+        });
+      }
+      return resp.json();
+    });
+  }
+
+  // ---------- 首屏 / 进入 ----------
+  function showAuth(msg) {
+    $("#app").hidden = true;
+    $("#auth-screen").hidden = false;
+    $("#key-state").textContent = "未认证";
+    $("#key-state").className = "pill";
+    $("#auth-error").textContent = msg || "";
+    $("#auth-input").focus();
+  }
+  function enter() {
+    $("#auth-screen").hidden = true;
+    $("#app").hidden = false;
+    $("#key-state").textContent = "已认证";
+    $("#key-state").className = "pill on";
+    loadAll();
+  }
+
+  $("#auth-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var v = $("#auth-input").value.trim();
+    if (!v) { $("#auth-error").textContent = "请输入 Master Key"; return; }
+    masterKey = v;
+    localStorage.setItem(LS_KEY, v);
+    $("#auth-input").value = "";
+    $("#auth-error").textContent = "";
+    enter();
+  });
+  $("#btn-change-key").addEventListener("click", function () {
+    localStorage.removeItem(LS_KEY);
+    masterKey = "";
+    showAuth("");
+  });
+
+  function loadAll() {
+    loadConfig();
+    loadUsage();
+  }
+
+  // ---------- ① 配置总览 ----------
+  function loadConfig() {
+    api("/admin/api/config").then(renderConfig).catch(function (e) {
+      if (e.message !== "unauthorized") {
+        $("#providers-wrap").innerHTML = '<div class="empty">配置加载失败：' + esc(e.message) + "</div>";
+      }
+    });
+  }
+
+  function renderConfig(cfg) {
+    var server = cfg.server || {};
+    var rl = cfg.rate_limit || {};
+    var html = '<table><tbody>' +
+      "<tr><th style='width:110px;'>监听地址</th><td class='mono'>" +
+        esc(server.host || "-") + ":" + esc(server.port || "-") + "</td></tr>" +
+      "<tr><th>Master Key</th><td class='mono'>" +
+        (server.master_key ? esc(server.master_key) : '<span class="error-text">未设置（网关无鉴权，公网部署请务必配置）</span>') + "</td></tr>" +
+      "<tr><th>限流</th><td>" +
+        (rl.requests_per_minute ? esc(rl.requests_per_minute) + " 次/分钟/key" : "不限流") + "</td></tr>" +
+      "</tbody></table>";
+    $("#server-info").innerHTML = html;
+
+    var providers = cfg.providers || {};
+    var names = Object.keys(providers);
+    if (!names.length) {
+      $("#providers-wrap").innerHTML = '<div class="empty">未配置任何 Provider</div>';
+    } else {
+      var ph = '<table id="providers-table"><thead><tr>' +
+        "<th>Provider</th><th>类型</th><th>Base URL</th><th>密钥池</th><th>模型</th><th>健康</th>" +
+        "</tr></thead><tbody>";
+      names.forEach(function (name) {
+        var p = providers[name] || {};
+        var keys = (p.keys || []).map(function (k) { return '<span class="chip gray mono">' + esc(k) + "</span>"; }).join("");
+        var models = (p.models || []).map(function (m) { return '<span class="chip">' + esc(m) + "</span>"; }).join("");
+        ph += "<tr><td><strong>" + esc(name) + "</strong></td>" +
+          "<td>" + esc(p.type || "-") + "</td>" +
+          '<td class="mono">' + esc(p.base_url || "-") + "</td>" +
+          "<td>" + (keys || "-") + "</td>" +
+          "<td>" + (models || "-") + "</td>" +
+          '<td data-health="' + esc(name) + '"><span class="dot unknown"></span><span class="h-text" style="color:var(--muted);font-size:12px;">未检测</span></td></tr>';
+      });
+      ph += "</tbody></table>";
+      $("#providers-wrap").innerHTML = ph;
+    }
+
+    var aliases = cfg.aliases || {};
+    var anames = Object.keys(aliases);
+    if (!anames.length) {
+      $("#aliases-wrap").innerHTML = '<div class="empty">未配置别名</div>';
+    } else {
+      var ah = '<table><thead><tr><th>别名（客户端使用）</th><th>实际路由</th></tr></thead><tbody>';
+      anames.forEach(function (a) {
+        ah += '<tr><td class="mono"><strong>' + esc(a) + '</strong></td><td class="mono">' + esc(aliases[a]) + "</td></tr>";
+      });
+      ah += "</tbody></table>";
+      $("#aliases-wrap").innerHTML = ah;
+    }
+
+    buildModelOptions(cfg);
+  }
+
+  function buildModelOptions(cfg) {
+    var sel = $("#model-select");
+    var html = "";
+    var aliases = cfg.aliases || {};
+    var anames = Object.keys(aliases);
+    if (anames.length) {
+      html += '<optgroup label="别名">';
+      anames.forEach(function (a) {
+        html += '<option value="' + esc(a) + '">' + esc(a) + " → " + esc(aliases[a]) + "</option>";
+      });
+      html += "</optgroup>";
+    }
+    var providers = cfg.providers || {};
+    Object.keys(providers).forEach(function (name) {
+      var models = (providers[name] || {}).models || [];
+      if (!models.length) return;
+      html += '<optgroup label="Provider: ' + esc(name) + '">';
+      models.forEach(function (m) {
+        html += '<option value="' + esc(m) + '">' + esc(name) + " / " + esc(m) + "</option>";
+      });
+      html += "</optgroup>";
+    });
+    sel.innerHTML = html || '<option value="">无可用模型</option>';
+  }
+
+  // ---------- 健康检查 ----------
+  $("#btn-health").addEventListener("click", function () {
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = "检测中…";
+    document.querySelectorAll("[data-health]").forEach(function (td) {
+      td.innerHTML = '<span class="dot unknown"></span><span class="h-text" style="color:var(--muted);font-size:12px;">检测中…</span>';
+    });
+    api("/admin/api/health").then(function (res) {
+      Object.keys(res || {}).forEach(function (name) {
+        var td = document.querySelector('[data-health="' + name + '"]');
+        if (!td) return;
+        var r = res[name] || {};
+        if (r.ok) {
+          td.innerHTML = '<span class="dot ok"></span><span class="h-text" style="font-size:12px;color:var(--ok);">正常 · ' + esc(r.latency_ms) + " ms</span>";
+        } else {
+          td.innerHTML = '<span class="dot bad"></span><span class="h-text" style="font-size:12px;color:var(--bad);" title="' +
+            esc(r.error || "") + '">异常 · ' + esc(truncate(r.error || "未知错误", 40)) + "</span>";
+        }
+      });
+    }).catch(function (e) {
+      if (e.message !== "unauthorized") alert("健康检查失败：" + e.message);
+    }).finally(function () {
+      btn.disabled = false;
+      btn.textContent = "健康检查";
+    });
+  });
+
+  // ---------- ② 用量仪表盘 ----------
+  $("#days-seg").addEventListener("click", function (e) {
+    var btn = e.target.closest("button");
+    if (!btn) return;
+    currentDays = Number(btn.dataset.days) || 7;
+    this.querySelectorAll("button").forEach(function (b) { b.classList.toggle("active", b === btn); });
+    loadUsage();
+  });
+  $("#btn-refresh-usage").addEventListener("click", loadUsage);
+
+  function loadUsage() {
+    api("/admin/api/usage/summary?days=" + currentDays).then(renderUsage).catch(function (e) {
+      if (e.message !== "unauthorized") $("#stat-cards").innerHTML = '<div class="empty">统计加载失败：' + esc(e.message) + "</div>";
+    });
+    api("/admin/api/usage/recent").then(renderRecent).catch(function () { /* 明细失败不影响聚合 */ });
+  }
+
+  function renderUsage(data) {
+    var t = (data && data.totals) || {};
+    var cards = [
+      { num: fmtNum(t.calls), label: "调用次数" },
+      { num: fmtNum(t.total_tokens), label: "Token 总量" },
+      { num: (t.avg_latency_ms || 0) + " ms", label: "平均延迟" },
+      { num: fmtRate(t.success_rate), label: "成功率" }
+    ];
+    $("#stat-cards").innerHTML = cards.map(function (c) {
+      return '<div class="stat-card"><div class="num">' + esc(c.num) + '</div><div class="label">' + esc(c.label) + "</div></div>";
+    }).join("");
+
+    var byModel = (data && data.by_model) || [];
+    if (!byModel.length) {
+      $("#model-bars").innerHTML = '<div class="empty">该时间段内暂无调用记录</div>';
+      $("#model-table-wrap").innerHTML = "";
+    } else {
+      var maxCalls = Math.max.apply(null, byModel.map(function (m) { return m.calls; }).concat([1]));
+      $("#model-bars").innerHTML = byModel.map(function (m) {
+        var pct = Math.max(2, Math.round(m.calls / maxCalls * 100));
+        return '<div class="bar-row" title="平均延迟 ' + esc(m.avg_latency_ms) + " ms · 成功率 " + esc(fmtRate(m.success_rate)) + '">' +
+          '<div class="bar-label mono">' + esc(m.model) + "</div>" +
+          '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div>' +
+          '<div class="bar-num">' + esc(m.calls) + " 次 · " + esc(fmtNum(m.total_tokens)) + " tok</div></div>";
+      }).join("");
+
+      var mh = '<table><thead><tr><th>模型</th><th>调用次数</th><th>Token 总量</th><th>平均延迟</th><th>成功率</th></tr></thead><tbody>';
+      byModel.forEach(function (m) {
+        mh += '<tr><td class="mono">' + esc(m.model) + "</td><td>" + esc(m.calls) + "</td><td>" +
+          esc(fmtNum(m.total_tokens)) + "</td><td>" + esc(m.avg_latency_ms) + " ms</td><td>" +
+          esc(fmtRate(m.success_rate)) + "</td></tr>";
+      });
+      mh += "</tbody></table>";
+      $("#model-table-wrap").innerHTML = mh;
+    }
+
+    var byProvider = (data && data.by_provider) || [];
+    if (!byProvider.length) {
+      $("#provider-table-wrap").innerHTML = '<div class="empty">暂无数据</div>';
+    } else {
+      var ph = '<table><thead><tr><th>Provider</th><th>调用次数</th><th>Token 总量</th><th>平均延迟</th><th>成功率</th></tr></thead><tbody>';
+      byProvider.forEach(function (p) {
+        ph += "<tr><td><strong>" + esc(p.provider) + "</strong></td><td>" + esc(p.calls) + "</td><td>" +
+          esc(fmtNum(p.total_tokens)) + "</td><td>" + esc(p.avg_latency_ms) + " ms</td><td>" +
+          esc(fmtRate(p.success_rate)) + "</td></tr>";
+      });
+      ph += "</tbody></table>";
+      $("#provider-table-wrap").innerHTML = ph;
+    }
+  }
+
+  function renderRecent(rows) {
+    if (!rows || !rows.length) {
+      $("#recent-wrap").innerHTML = '<div class="empty">暂无调用记录</div>';
+      return;
+    }
+    var html = '<table><thead><tr>' +
+      "<th>时间</th><th>调用 Key</th><th>模型</th><th>Provider</th><th>Token(总)</th><th>延迟</th><th>状态</th><th>流式</th>" +
+      "</tr></thead><tbody>";
+    rows.forEach(function (r) {
+      var ok = r.status >= 200 && r.status < 300;
+      html += "<tr>" +
+        '<td class="mono">' + esc(fmtTs(r.ts)) + "</td>" +
+        '<td class="mono" title="' + esc(r.api_key) + '">' + esc(truncate(r.api_key, 10)) + "</td>" +
+        '<td class="mono">' + esc(r.model) + "</td>" +
+        "<td>" + esc(r.provider) + "</td>" +
+        "<td>" + esc(fmtNum(r.total_tokens)) + "</td>" +
+        "<td>" + esc(r.latency_ms) + " ms</td>" +
+        '<td><span class="dot ' + (ok ? "ok" : "bad") + '"></span>' + esc(r.status) + "</td>" +
+        "<td>" + (r.stream ? "是" : "否") + "</td></tr>";
+    });
+    html += "</tbody></table>";
+    $("#recent-wrap").innerHTML = html;
+  }
+
+  // ---------- ③ 模型测试 ----------
+  $("#btn-test").addEventListener("click", function () {
+    var model = $("#model-select").value;
+    if (!model) { alert("请先选择模型"); return; }
+    var btn = this;
+    var box = $("#test-result");
+    btn.disabled = true;
+    btn.textContent = "测试中…";
+    box.className = "test-result show";
+    box.innerHTML = '<div class="meta">正在请求模型 <span class="mono">' + esc(model) + "</span> …</div>";
+    api("/admin/api/test", { method: "POST", json: { model: model } }).then(function (r) {
+      if (r.ok) {
+        box.className = "test-result show ok";
+        box.innerHTML = '<div class="meta">模型 <span class="mono">' + esc(model) + "</span> · 延迟 " +
+          esc(r.latency_ms) + ' ms · <strong style="color:var(--ok);">成功</strong></div>' +
+          '<div class="reply">' + esc(r.reply || "(空回复)") + "</div>";
+      } else {
+        box.className = "test-result show fail";
+        box.innerHTML = '<div class="meta">模型 <span class="mono">' + esc(model) + "</span> · 延迟 " +
+          esc(r.latency_ms) + ' ms · <strong style="color:var(--bad);">失败</strong></div>' +
+          '<div class="reply error-text">' + esc(r.error || "未知错误") + "</div>";
+      }
+    }).catch(function (e) {
+      if (e.message !== "unauthorized") {
+        box.className = "test-result show fail";
+        box.innerHTML = '<div class="reply error-text">请求失败：' + esc(e.message) + "</div>";
+      }
+    }).finally(function () {
+      btn.disabled = false;
+      btn.textContent = "发送测试";
+    });
+  });
+
+  // ---------- 启动 ----------
+  if (masterKey) {
+    enter();
+  } else {
+    showAuth("");
+  }
+})();
+</script>
+</body>
+</html>

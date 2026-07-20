@@ -1,0 +1,8 @@
+.venv/
+data/
+config.yaml
+.git/
+__pycache__/
+*.pyc
+tests/
+contrib/
