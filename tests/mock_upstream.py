@@ -89,6 +89,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._responses(body, stream)
         if self.path == "/v1/embeddings":
             return self._embeddings(body)
+        if self.path == "/v1/images/generations":
+            return self._media(body, "image")
+        if self.path == "/v1/videos/generations":
+            return self._media(body, "video")
         if self.path == "/v1/messages":
             return self._anthropic(body, stream)
         m = re.match(r"^/v1beta/models/([^:]+):(generateContent|streamGenerateContent)(?:\?(.*))?$",
@@ -133,6 +137,17 @@ class Handler(BaseHTTPRequestHandler):
                                      "content": [{"type": "output_text", "text": text}]}],
                          "usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}}}))
         self._send_sse(events)
+
+    # ------------------------------------------------------------- media generation
+    def _media(self, body, kind):
+        auth = self.headers.get("Authorization", "")
+        key = auth[7:] if auth.startswith("Bearer ") else ""
+        if key in BAD_KEYS:
+            return self._send_json(500, {"error": {"message": f"key {key} exploded"}})
+        if kind == "image":
+            return self._send_json(200, {"created": int(time.time()),
+                "data": [{"url": "http://mock/image.png", "revised_prompt": str(body.get("prompt", ""))}]})
+        return self._send_json(200, {"data": [{"video_url": "http://mock/video.mp4"}]})
 
     # ------------------------------------------------------------- embeddings
     def _embeddings(self, body):

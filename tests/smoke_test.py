@@ -92,6 +92,26 @@ moa:
       provider: openai
       model: gpt-4o
       reasoning_effort: medium
+  multimodal:
+    max_concurrency: 2
+    default_reasoning_effort: low
+    stages:
+      - provider: openai
+        model: gpt-4o
+        modality: image
+        prompt: a cat
+      - provider: openai
+        model: gpt-4o
+        modality: vision
+      - provider: openai
+        model: gpt-4o
+        modality: text
+  imggen:
+    stages:
+      - provider: openai
+        model: gpt-4o
+        modality: image
+        prompt: a dog
 rate_limit:
   requests_per_minute: 0
 """)
@@ -241,6 +261,20 @@ rate_limit:
                                 "messages": [{"role": "user", "content": "hi"}]}) as st:
             txt = b"".join(st.iter_bytes()).decode("utf-8", "ignore")
         check("MOA stream has [DONE]", "data: [DONE]" in txt, txt[:100])
+
+        # 11f1 multimodal staged pipeline (image -> vision -> text)
+        r = httpx.post(f"{BASE}/chat/completions", headers=h,
+                       json={"model": "moa:multimodal", "messages": [{"role": "user", "content": "describe"}]})
+        check("MOA multimodal staged 200", r.status_code == 200, str(r.status_code)+r.text[:120])
+        if r.status_code == 200:
+            check("MOA multimodal has content", bool(r.json()["choices"][0]["message"].get("content")))
+
+        # 11f2 image-gen pipeline returns markdown image
+        r = httpx.post(f"{BASE}/chat/completions", headers=h,
+                       json={"model": "moa:imggen", "messages": [{"role": "user", "content": "x"}]})
+        check("MOA imggen 200", r.status_code == 200, str(r.status_code)+r.text[:120])
+        if r.status_code == 200:
+            check("MOA imggen markdown image", "![image]" in r.json()["choices"][0]["message"].get("content",""), r.text[:120])
 
         # 11f MOA unknown pipeline -> 404
         r = httpx.post(f"{BASE}/chat/completions", headers=h,

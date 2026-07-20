@@ -431,34 +431,51 @@
       r.querySelector(".ed-adel").addEventListener("click", function(){ var a=r.getAttribute("data-alias"); askConfirm(t("delete"), t("confirm_delete"), function(){ delete raw.aliases[a]; renderAliasList(); markDirty(); }); });
     });
   }
+  function modalityOpts(sel){ return ["text","vision","image","video"].map(function(m){return '<option value="'+m+'" '+(m===sel?'selected':'')+'>'+t("modality_"+m)+'</option>';}).join(""); }
   function renderMoaList() {
     var names=Object.keys(raw.moa||{});
     if(!names.length){ $("#moa-list").innerHTML='<div class="empty">'+t("no_moa")+'</div>'; return; }
     var h="";
-    names.forEach(function(n){ var m=raw.moa[n]||{}; var open=expanded.moa.has(n);
-      h+='<div class="subcard '+(open?'open':'')+'" data-moa="'+esc(n)+'"><div class="sc-head"><svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg><span class="sc-title">moa:'+esc(n)+'</span><span class="sc-meta">'+(m.proposers||[]).length+' '+t("proposers").toLowerCase()+'</span><button class="btn danger ghost small ed-mdel">'+t("del")+'</button></div>';
+    names.forEach(function(n){ var m=raw.moa[n]||{}; var open=expanded.moa.has(n); var mode=m.stages?"stages":"proposers";
+      h+='<div class="subcard '+(open?'open':'')+'" data-moa="'+esc(n)+'"><div class="sc-head"><svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg><span class="sc-title">moa:'+esc(n)+'</span><span class="sc-meta">'+(mode==="stages"?((m.stages||[]).length+" "+t("stages").toLowerCase()):(m.proposers||[]).length+" "+t("proposers").toLowerCase())+'</span><button class="btn danger ghost small ed-mdel">'+t("del")+'</button></div>';
       h+='<div class="sc-body"><div class="field"><label>Name</label><input class="ed-mname" type="text" value="'+esc(n)+'" style="max-width:260px;"></div>';
-      h+='<div class="field"><label>'+t("default_reasoning")+'</label><select class="ed-mdefault" style="max-width:200px;">'+reasonDefOpts(m.default_reasoning_effort||"none")+'</select><div class="hint">'+t("reasoning_hint")+'</div></div>';
-      h+='<div class="field"><label>'+t("proposers")+' <span style="text-transform:none;color:var(--faint);font-weight:400;">('+t("moa_hint_sub")+')</span></label><div class="ed-props">';
-      (m.proposers||[]).forEach(function(pr,i){
-        h+='<div class="row-inline" style="margin-bottom:6px;gap:6px;" data-pi="'+i+'"><select class="ed-pprov" style="max-width:150px;">'+provOpts(pr.provider)+'</select><select class="ed-pmodel" style="max-width:170px;">'+modelOpts(pr.provider,pr.model)+'</select><select class="ed-preason" style="max-width:120px;" title="'+t("reasoning_effort")+'">'+reasonAgentOpts(pr.reasoning_effort||"default")+'</select><button class="btn danger ghost small ed-ppdel">'+t("del")+'</button></div>';
-      });
-      h+='</div><button class="btn subtle small ed-ppadd" style="margin-top:6px;">'+t("add_proposer")+'</button></div>';
-      var ag=m.aggregator||{};
-      h+='<div class="field" style="margin-top:14px;"><label>'+t("aggregator")+' <span style="text-transform:none;color:var(--faint);font-weight:400;">('+t("moa_hint_agg")+')</span></label><div class="row-inline" style="gap:6px;"><select class="ed-agprov" style="max-width:150px;">'+provOpts(ag.provider)+'</select><select class="ed-agmodel" style="max-width:170px;">'+modelOpts(ag.provider,ag.model)+'</select><select class="ed-agreason" style="max-width:120px;" title="'+t("reasoning_effort")+'">'+reasonAgentOpts(ag.reasoning_effort||"default")+'</select></div></div>';
-      h+='<div class="field" style="margin-top:10px;"><label>'+t("agg_prompt")+'</label><textarea class="ed-agprompt" rows="2" placeholder="'+t("agg_prompt_ph")+'">'+esc(m.aggregator_prompt||'')+'</textarea></div></div></div>';
+      h+='<div class="grid2"><div class="field"><label>'+t("default_reasoning")+'</label><select class="ed-mdefault">'+reasonDefOpts(m.default_reasoning_effort||"none")+'</select></div><div class="field"><label>'+t("max_concurrency")+'</label><input class="ed-mconc" type="number" value="'+esc(m.max_concurrency||4)+'" style="max-width:120px;"><div class="hint">'+t("max_concurrency_hint")+'</div></div></div>';
+      h+='<div class="field"><label>'+t("pipeline_pattern")+'</label><div class="seg ed-pattern"><button data-mode="proposers" '+(mode==="proposers"?'class="active"':'')+'>'+t("pattern_proposers")+'</button><button data-mode="stages" '+(mode==="stages"?'class="active"':'')+'>'+t("pattern_stages")+'</button></div></div>';
+      if(mode==="stages"){
+        h+='<div class="field"><label>'+t("stages")+'</label><div class="ed-stages">';
+        (m.stages||[]).forEach(function(st,i){
+          h+='<div class="ed-stage" data-si="'+i+'" style="border-left:2px solid var(--accent);padding-left:10px;margin-bottom:10px;">';
+          h+='<div class="row-inline" style="gap:6px;margin-bottom:6px;"><select class="ed-smod" style="max-width:110px;">'+modalityOpts(st.modality||"text")+'</select><select class="ed-sprov" style="max-width:140px;">'+provOpts(st.provider)+'</select><select class="ed-smodel" style="max-width:160px;">'+modelOpts(st.provider,st.model)+'</select><select class="ed-sreason" style="max-width:110px;" title="'+t("reasoning_effort")+'">'+reasonAgentOpts(st.reasoning_effort||"default")+'</select><button class="btn danger ghost small ed-sdel">'+t("del")+'</button></div>';
+          h+='<div class="row-inline" style="gap:8px;"><input class="ed-sprompt" type="text" value="'+esc(st.prompt||'')+'" placeholder="'+t("stage_prompt_ph")+'" style="flex:1;"><label style="font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" class="ed-sparallel" '+(st.parallel?'checked':'')+'> '+t("parallel")+'</label><label style="font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" class="ed-soptional" '+(st.optional?'checked':'')+'> '+t("optional")+'</label><input class="ed-stimeout" type="number" value="'+esc(st.timeout||120)+'" style="max-width:90px;" title="'+t("timeout")+'"></div>';
+          h+='</div>';
+        });
+        h+='</div><button class="btn subtle small ed-sadd" style="margin-top:6px;">'+t("add_stage")+'</button><div class="hint">'+t("stages_hint")+'</div></div>';
+      } else {
+        h+='<div class="field"><label>'+t("proposers")+' <span style="text-transform:none;color:var(--faint);font-weight:400;">('+t("moa_hint_sub")+')</span></label><div class="ed-props">';
+        (m.proposers||[]).forEach(function(pr,i){
+          h+='<div class="row-inline" style="margin-bottom:6px;gap:6px;" data-pi="'+i+'"><select class="ed-pprov" style="max-width:150px;">'+provOpts(pr.provider)+'</select><select class="ed-pmodel" style="max-width:170px;">'+modelOpts(pr.provider,pr.model)+'</select><select class="ed-preason" style="max-width:120px;" title="'+t("reasoning_effort")+'">'+reasonAgentOpts(pr.reasoning_effort||"default")+'</select><button class="btn danger ghost small ed-ppdel">'+t("del")+'</button></div>';
+        });
+        h+='</div><button class="btn subtle small ed-ppadd" style="margin-top:6px;">'+t("add_proposer")+'</button></div>';
+        var ag=m.aggregator||{};
+        h+='<div class="field" style="margin-top:14px;"><label>'+t("aggregator")+' <span style="text-transform:none;color:var(--faint);font-weight:400;">('+t("moa_hint_agg")+')</span></label><div class="row-inline" style="gap:6px;"><select class="ed-agprov" style="max-width:150px;">'+provOpts(ag.provider)+'</select><select class="ed-agmodel" style="max-width:170px;">'+modelOpts(ag.provider,ag.model)+'</select><select class="ed-agreason" style="max-width:120px;" title="'+t("reasoning_effort")+'">'+reasonAgentOpts(ag.reasoning_effort||"default")+'</select></div></div>';
+        h+='<div class="field" style="margin-top:10px;"><label>'+t("agg_prompt")+'</label><textarea class="ed-agprompt" rows="2" placeholder="'+t("agg_prompt_ph")+'">'+esc(m.aggregator_prompt||'')+'</textarea></div>';
+      }
+      h+='</div></div>';
     });
     $("#moa-list").innerHTML=h;
-    $$("#moa-list .subcard").forEach(function(sc){ var n=sc.getAttribute("data-moa");
+    $$("#moa-list .subcard").forEach(function(sc){ var n=sc.getAttribute("data-moa"); var m=raw.moa[n];
       sc.querySelector(".sc-head").addEventListener("click", function(e){ if(e.target.closest("button")) return; if(expanded.moa.has(n)){expanded.moa.delete(n);sc.classList.remove("open");}else{expanded.moa.add(n);sc.classList.add("open");} });
       sc.querySelector(".ed-mdel").addEventListener("click", function(){ askConfirm(t("delete"), t("confirm_delete"), function(){ delete raw.moa[n]; expanded.moa.delete(n); renderMoaList(); markDirty(); }); });
-      sc.querySelector(".ed-ppadd").addEventListener("click", function(){ var mm=raw.moa[n]; mm.proposers=mm.proposers||[]; mm.proposers.push({provider:"",model:"",reasoning_effort:"none"}); expanded.moa.add(n); renderMoaList(); markDirty(); });
+      sc.querySelectorAll(".ed-pattern button").forEach(function(b){ b.addEventListener("click", function(){ var md=b.getAttribute("data-mode"); var keep={default_reasoning_effort:m.default_reasoning_effort, max_concurrency:m.max_concurrency}; if(md==="stages"){ raw.moa[n]=Object.assign({stages:[{provider:"",model:"",modality:"text",reasoning_effort:"default"}]}, keep); } else { raw.moa[n]=Object.assign({proposers:[{provider:"",model:"",reasoning_effort:"default"}],aggregator:{provider:"",model:"",reasoning_effort:"default"}}, keep); } expanded.moa.add(n); renderMoaList(); markDirty(); }); });
+      if(m.stages){
+        sc.querySelector(".ed-sadd").addEventListener("click", function(){ m.stages=m.stages||[]; m.stages.push({provider:"",model:"",modality:"text",reasoning_effort:"default"}); expanded.moa.add(n); renderMoaList(); markDirty(); });
+        sc.querySelectorAll(".ed-stage").forEach(function(st){ st.querySelector(".ed-sprov").addEventListener("change", function(){ var pv=this.value; st.querySelector(".ed-smodel").innerHTML=modelOpts(pv,(provModels(pv)[0]||"")); markDirty(); }); st.querySelector(".ed-sdel").addEventListener("click", function(){ var idx=parseInt(st.getAttribute("data-si"),10); raw.moa[n].stages.splice(idx,1); renderMoaList(); markDirty(); }); });
+      } else {
+        sc.querySelector(".ed-ppadd").addEventListener("click", function(){ m.proposers=m.proposers||[]; m.proposers.push({provider:"",model:"",reasoning_effort:"default"}); expanded.moa.add(n); renderMoaList(); markDirty(); });
+        sc.querySelectorAll(".ed-props .row-inline").forEach(function(r){ r.querySelector(".ed-pprov").addEventListener("change", function(){ var pv=this.value; r.querySelector(".ed-pmodel").innerHTML=modelOpts(pv,(provModels(pv)[0]||"")); markDirty(); }); r.querySelector(".ed-ppdel").addEventListener("click", function(){ var idx=parseInt(r.getAttribute("data-pi"),10); raw.moa[n].proposers.splice(idx,1); renderMoaList(); markDirty(); }); });
+        sc.querySelector(".ed-agprov").addEventListener("change", function(){ var pv=this.value; sc.querySelector(".ed-agmodel").innerHTML=modelOpts(pv,(provModels(pv)[0]||"")); markDirty(); });
+      }
     });
-    $$("#moa-list .ed-props .row-inline").forEach(function(r){
-      r.querySelector(".ed-pprov").addEventListener("change", function(){ var pv=this.value; r.querySelector(".ed-pmodel").innerHTML=modelOpts(pv,(provModels(pv)[0]||"")); markDirty(); });
-      r.querySelector(".ed-ppdel").addEventListener("click", function(){ var card=r.closest(".subcard"); var mn=card.getAttribute("data-moa"); var idx=parseInt(r.getAttribute("data-pi"),10); raw.moa[mn].proposers.splice(idx,1); renderMoaList(); markDirty(); });
-    });
-    $$("#moa-list .ed-agprov").forEach(function(sel){ sel.addEventListener("change", function(){ var pv=this.value; var card=sel.closest(".subcard"); card.querySelector(".ed-agmodel").innerHTML=modelOpts(pv,(provModels(pv)[0]||"")); markDirty(); }); });
   }
 
   $("#add-prov").addEventListener("click", function(){ var n="provider_"+Date.now(); ensureSections(); raw.providers[n]={type:"openai_like",base_url:"",keys:[],models:[],supports_responses:false}; expanded.prov.add(n); renderProvList(); markDirty(); });
@@ -483,7 +500,7 @@
       provs[name]={type:el.querySelector(".ed-ptype").value,base_url:el.querySelector(".ed-purl").value.trim(),keys:el.querySelector(".ed-pkeys").value.split("\n").map(function(z){return z.trim();}).filter(Boolean),models:models,supports_responses:el.querySelector(".ed-pres").checked}; });
     raw.providers=provs;
     var al={}; $$("#alias-list .row-inline").forEach(function(el){ var a=el.querySelector(".ed-aname").value.trim(); var pv=el.querySelector(".ed-aprov").value; var mv=el.querySelector(".ed-amodel").value; if(a&&pv&&mv) al[a]=pv+"/"+mv; }); raw.aliases=al;
-    var moa={}; $$("#moa-list .subcard").forEach(function(el){ var n=el.querySelector(".ed-mname").value.trim()||el.getAttribute("data-moa"); var props=[]; el.querySelectorAll(".ed-props .row-inline").forEach(function(p){ var pv=p.querySelector(".ed-pprov").value, mv=p.querySelector(".ed-pmodel").value; var re=p.querySelector(".ed-preason").value; if(pv&&mv){ var o={provider:pv,model:mv}; if(re&&re!=="default") o.reasoning_effort=re; props.push(o); } }); var entry={proposers:props,aggregator:{provider:el.querySelector(".ed-agprov").value,model:el.querySelector(".ed-agmodel").value}}; var md=el.querySelector(".ed-mdefault").value; if(md&&md!=="none") entry.default_reasoning_effort=md; var are=el.querySelector(".ed-agreason").value; if(are&&are!=="default") entry.aggregator.reasoning_effort=are; var ap=el.querySelector(".ed-agprompt").value; if(ap&&ap.trim()) entry.aggregator_prompt=ap.trim(); moa[n]=entry; }); raw.moa=moa;
+    var moa={}; $$("#moa-list .subcard").forEach(function(el){ var n=el.querySelector(".ed-mname").value.trim()||el.getAttribute("data-moa"); var entry={}; var mc=el.querySelector(".ed-mconc").value.trim(); if(mc) entry.max_concurrency=parseInt(mc,10); var md=el.querySelector(".ed-mdefault").value; if(md&&md!=="none") entry.default_reasoning_effort=md; if(el.querySelector(".ed-stages")){ var stages=[]; el.querySelectorAll(".ed-stage").forEach(function(st){ var mod=st.querySelector(".ed-smod").value, pv=st.querySelector(".ed-sprov").value, mv=st.querySelector(".ed-smodel").value; if(pv&&mv){ var o={provider:pv,model:mv,modality:mod}; var re=st.querySelector(".ed-sreason").value; if(re&&re!=="default") o.reasoning_effort=re; var pr=st.querySelector(".ed-sprompt").value.trim(); if(pr) o.prompt=pr; if(st.querySelector(".ed-sparallel").checked) o.parallel=true; if(st.querySelector(".ed-soptional").checked) o.optional=true; var to=st.querySelector(".ed-stimeout").value.trim(); if(to) o.timeout=parseInt(to,10); stages.push(o); } }); entry.stages=stages; } else { var props=[]; el.querySelectorAll(".ed-props .row-inline").forEach(function(p){ var pv=p.querySelector(".ed-pprov").value, mv=p.querySelector(".ed-pmodel").value; var re=p.querySelector(".ed-preason").value; if(pv&&mv){ var o={provider:pv,model:mv}; if(re&&re!=="default") o.reasoning_effort=re; props.push(o); } }); entry.proposers=props; var ag={provider:el.querySelector(".ed-agprov").value,model:el.querySelector(".ed-agmodel").value}; var are=el.querySelector(".ed-agreason").value; if(are&&are!=="default") ag.reasoning_effort=are; entry.aggregator=ag; var ap=el.querySelector(".ed-agprompt").value; if(ap&&ap.trim()) entry.aggregator_prompt=ap.trim(); } moa[n]=entry; }); raw.moa=moa;
   }
   function saveConfig() {
     collectConfig();

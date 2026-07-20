@@ -49,6 +49,21 @@ class OpenAILikeProvider(ProviderBase):
             url, json=payload, headers=headers, timeout=self.timeout
         )
 
+    async def _media_gen(self, model: str, body: dict, api_key: str, path: str) -> "httpx.Response":
+        """Media generation passthrough (OpenAI-compatible /images/generations,
+        /videos/generations). Endpoint path is configurable per provider."""
+        url = f"{self.base_url}/{path}"
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        payload = dict(body)
+        payload["model"] = model
+        return await get_client().post(url, json=payload, headers=headers, timeout=self.timeout)
+
+    async def image_gen(self, model: str, body: dict, api_key: str) -> "httpx.Response":
+        return await self._media_gen(model, body, api_key, self.image_path)
+
+    async def video_gen(self, model: str, body: dict, api_key: str) -> "httpx.Response":
+        return await self._media_gen(model, body, api_key, self.video_path)
+
     async def _stream(self, url: str, payload: dict, headers: dict) -> AsyncIterator[bytes]:
         """Streaming passthrough: stream as received, yielding bytes line by line (aiter_lines strips newlines, so re-add them)."""
         client = get_client()

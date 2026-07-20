@@ -27,6 +27,8 @@ providers:
         context: 128000      # optional context window (exposed via GET /v1/models)
       - gpt-4o-mini          # plain string is also fine
     supports_responses: true   # set true when the upstream natively supports /v1/responses (passthrough fast path)
+    # image_path: images/generations  # media-gen endpoint paths (OpenAI-compatible); override if upstream differs
+    # video_path: videos/generations
 
   # ---- Anthropic（Claude）----
   anthropic:
@@ -83,6 +85,22 @@ moa:
       provider: openai
       model: gpt-4o
       reasoning_effort: medium   # reasoning effort for the synthesizer
+  # Multimodal hybrid pipeline (stages): mix text / vision / image-gen / video-gen.
+  # Trigger with model: moa:hybrid
+  hybrid:
+    max_concurrency: 4            # cap in-flight calls to protect per-stream TPS
+    default_reasoning_effort: medium
+    stages:
+      - provider: openai
+        model: gpt-4o
+        modality: image           # generate an image from the user prompt
+        prompt: a studio photo of a cat
+      - provider: openai
+        model: gpt-4o
+        modality: vision          # describe the generated image
+      - provider: openai
+        model: gpt-4o
+        modality: text            # final synthesis (streamed to the client)
     # aggregator_prompt: "custom synthesis prompt (optional)"
 
 # ---------------------------------------------------------------------

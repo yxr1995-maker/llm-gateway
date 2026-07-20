@@ -33,7 +33,7 @@ def get_client() -> httpx.AsyncClient:
         _client = httpx.AsyncClient(
             timeout=httpx.Timeout(DEFAULT_TIMEOUT),
             follow_redirects=True,
-            limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+            limits=httpx.Limits(max_connections=200, max_keepalive_connections=40),
         )
     return _client
 
@@ -70,6 +70,8 @@ class ProviderBase:
         self.timeout: float = DEFAULT_TIMEOUT
         self.models: list[str] = []
         self.supports_responses: bool = False  # whether the upstream natively supports /v1/responses
+        self.image_path: str = "images/generations"  # media generation endpoint paths
+        self.video_path: str = "videos/generations"
 
     async def chat_completions(
         self, model: str, body: dict, api_key: str, stream: bool
@@ -102,6 +104,8 @@ def create_provider(name: str, cfg: dict) -> ProviderBase:
     provider = cls(name=name, base_url=cfg.get("base_url") or "", keys=cfg.get("keys") or [])
     provider.models = list(cfg.get("models") or [])
     provider.supports_responses = bool(cfg.get("supports_responses"))
+    if cfg.get("image_path"): provider.image_path = cfg["image_path"]
+    if cfg.get("video_path"): provider.video_path = cfg["video_path"]
     if cfg.get("timeout"):
         try:
             provider.timeout = float(cfg["timeout"])

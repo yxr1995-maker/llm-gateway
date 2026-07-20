@@ -328,7 +328,11 @@ async def _handle_moa(request: Request, wire: str, body: dict, model: str):
                             latency_ms=int((time.monotonic() - t0) * 1000), status=502, stream=int(stream))
         return _error(502, f"MOA failed: {exc!r}"[:300], "upstream_error", "upstream_error")
 
-    if not stream:
+    # Branch on result type: a dict (or httpx.Response) is a completed chat result;
+    # an async iterator is a chat SSE stream to forward. This lets staged multimodal
+    # pipelines return a media result as a dict even when stream was requested.
+    is_stream = not isinstance(result, (dict, httpx.Response))
+    if not is_stream:
         chat_data = result.json() if isinstance(result, httpx.Response) else result
         if wire == "responses":
             out = chat_resp_to_responses(chat_data, model)
@@ -343,7 +347,7 @@ async def _handle_moa(request: Request, wire: str, body: dict, model: str):
                             latency_ms=int((time.monotonic() - t0) * 1000), status=200, stream=0)
         return JSONResponse(content=out)
 
-    # streaming: aggregator's chat stream -> client wire
+    # streaming: the final stage's chat stream -> client wire
     if wire == "responses":
         conv = chat_stream_to_responses(result, model, True)
         tail = _responses_error_tail(model)
