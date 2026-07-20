@@ -1,50 +1,48 @@
 # llm-gateway
 
-> A personal, self-hosted LLM API aggregation gateway. Exposes an OpenAI-compatible API and forwards requests to multiple LLM providers (OpenAI / Anthropic / Gemini / DeepSeek / and any OpenAI-compatible service) with model aliases, a key pool with automatic failover, usage stats and rate limiting.
+> A personal, self-hosted LLM API aggregation gateway. Exposes an OpenAI-compatible API and forwards requests to multiple LLM providers (OpenAI / Anthropic / Gemini / DeepSeek / and any OpenAI-compatible service) with model aliases, a key pool with automatic failover, usage stats, rate limiting, and a built-in admin console.
 
-个人用 LLM API 聚合网关：单进程 FastAPI 服务，对外暴露 **OpenAI 兼容 API**，把请求转发到多家 LLM 服务商（OpenAI / Anthropic / DeepSeek / Gemini 及任意 OpenAI 兼容服务）。
+[简体中文](README.zh-CN.md)
 
-典型场景：Codex 等客户端只需设置 `OPENAI_BASE_URL` 指向本网关，即可通过**模型别名**（如 `claude`、`ds`）自由切换底层模型，配合密钥池轮询与故障转移、用量统计和限流。
+A single-process FastAPI service that exposes an **OpenAI-compatible API** and forwards requests to multiple LLM providers. Typical use case: point a client like Codex at the gateway via `OPENAI_BASE_URL`, then switch the underlying model freely with **model aliases** (e.g. `claude`, `ds`), backed by a rotating key pool with failover, usage statistics, and rate limiting.
 
-## 功能特性
+## Features
 
-- **OpenAI 兼容**：`POST /v1/chat/completions`（含 SSE 流式）、`GET /v1/models`
-- **Responses 透传**：`POST /v1/responses`（含流式），让只说 Responses API 的客户端（如新版 Codex CLI）也能走网关；仅 openai_like 上游支持
-- **Embeddings 透传**：`POST /v1/embeddings`，向量接口同样享受密钥池与统计
-- **Anthropic Messages 输入**：`POST /v1/messages`，只说 Anthropic 协议的客户端也能聚合到任意上游
-- **MOA 混合智能体**：配置多个 proposer 并行作答 + aggregator 综合，`model` 填 `moa:<name>` 触发
-- **工具韧性**：自动修复非法 tool_call JSON、流式中途上游异常或提前断开时合成合法收尾（`[DONE]`/`completed`），避免客户端会话因断流中断
-- **Responses API 透传**：`POST /v1/responses`（含 SSE 流式），供 Codex 等
-  Responses-only 客户端使用；仅 `openai_like` provider 且上游原生支持
-  Responses 协议时可用（如火山 Ark / agnes），不支持的 provider 返回 501
-- **多 Provider**：OpenAI 兼容协议、Anthropic Messages、Google Gemini，自动做格式转换
-- **模型别名**：`aliases` 配置短别名 → `provider/model`，客户端无感切换
-- **密钥池**：多 key 轮询、失败自动冷却与故障转移
-- **用量统计**：SQLite 持久化（`data/usage.db`），按模型 / Provider 聚合
-- **限流**：按调用方 key 的内存令牌桶
-- **管理页**：零构建单文件页面，配置总览 / 用量仪表盘 / 模型测试
+- **OpenAI-compatible**: `POST /v1/chat/completions` (with SSE streaming), `GET /v1/models`
+- **Responses passthrough**: `POST /v1/responses` (with streaming) for Responses-only clients such as the Codex CLI
+- **Embeddings passthrough**: `POST /v1/embeddings`, sharing the same key pool and stats
+- **Anthropic Messages input**: `POST /v1/messages`, so Anthropic-protocol clients can also reach any upstream
+- **Unified routing**: Responses is the canonical hub — any input face (`/v1/chat/completions`, `/v1/responses`, `/v1/messages`) can reach any upstream (openai_like / anthropic / gemini), with cross-protocol streaming conversion
+- **MOA (Mixture-of-Agents)**: multiple proposers answer in parallel, an aggregator synthesizes; trigger with `model: moa:<name>`
+- **Tool resilience**: auto-repairs malformed `tool_call` JSON; if the upstream errors or drops mid-stream, a valid terminator (`[DONE]` / `response.completed` / `message_stop`) is synthesized so the client session never breaks on a broken stream
+- **Multi-provider**: OpenAI-compatible, Anthropic Messages, Google Gemini — automatic format conversion
+- **Model aliases**: short alias -> `provider/model`, transparent switching
+- **Key pool**: round-robin across multiple keys, automatic cooldown and failover on failure
+- **Usage stats**: SQLite-persisted (`data/usage.db`), aggregated by model / provider
+- **Rate limiting**: in-memory token bucket per caller key
+- **Admin console**: zero-build single-file UI for config editing, usage dashboard, and model testing
 
-## 快速开始
+## Quick start
 
 ```bash
-# 1. 安装依赖（Python 3.11+）
+# 1. Install dependencies (Python 3.11+)
 pip install -r requirements.txt
 
-# 2. 准备配置
+# 2. Prepare config
 cp config.example.yaml config.yaml
-#    编辑 config.yaml，填入各 provider 的真实 API key
+#    edit config.yaml and fill in real API keys for each provider
 
-# 3. 启动
+# 3. Run
 python -m app.main
-# 等价于：uvicorn app.main:app --host 0.0.0.0 --port 8080
+# equivalent to: uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
-启动后：
+After startup:
 
-- API 入口：`http://127.0.0.1:8080/v1`
-- 管理页：`http://127.0.0.1:8080/static/admin.html`（或直接访问根路径 `http://127.0.0.1:8080/`，会跳转到管理页）
+- API base: `http://127.0.0.1:8080/v1`
+- Admin console: `http://127.0.0.1:8080/` (root redirects to the console)
 
-验证：
+Verify:
 
 ```bash
 curl http://127.0.0.1:8080/v1/models \
@@ -53,67 +51,68 @@ curl http://127.0.0.1:8080/v1/models \
 curl http://127.0.0.1:8080/v1/chat/completions \
   -H "Authorization: Bearer sk-local-xxxx" \
   -H "Content-Type: application/json" \
-  -d '{"model": "ds", "messages": [{"role": "user", "content": "你好"}]}'
+  -d '{"model": "ds", "messages": [{"role": "user", "content": "hello"}]}'
 ```
 
-流式只需在请求体中加 `"stream": true`，响应为标准 SSE（`data: {...}`，结束 `data: [DONE]`）。
+Add `"stream": true` to the body for SSE streaming (`data: {...}`, terminated by `data: [DONE]`).
 
-## 配置详解（config.yaml）
+## Configuration (config.yaml)
 
 ```yaml
 server:
-  host: 0.0.0.0                   # 监听地址
-  port: 8080                      # 监听端口
-  master_key: "sk-local-xxxx"     # 调用网关与管理页的 Key；留空则无需鉴权（仅限本机调试）
+  host: 0.0.0.0                   # listen address
+  port: 8080                      # listen port
+  master_key: "sk-local-xxxx"     # gateway/admin key; empty = no auth (local-only)
 
-providers:                        # 每家服务商一个条目
-  <名称>:
+providers:                        # one entry per provider
+  <name>:
     type: openai_like             # openai_like / anthropic / gemini
-    base_url: https://...         # 上游地址（见文末速查表）
-    keys: ["sk-...", "sk-..."]    # 密钥池，轮询 + 故障转移
-    models: ["model-a", ...]      # 对外可用模型清单
+    base_url: https://...         # upstream URL (see cheat sheet below)
+    keys: ["sk-...", "sk-..."]    # key pool, round-robin + failover
+    models: ["model-a", ...]      # available models
+    supports_responses: false     # true if upstream natively supports /v1/responses (passthrough fast path)
 
-aliases:                          # 别名 → provider/model
+aliases:                          # alias -> provider/model
   claude: anthropic/claude-sonnet-4-5
 
 rate_limit:
-  requests_per_minute: 60         # 每个调用 key 的每分钟限额；0 = 不限
+  requests_per_minute: 60         # per-caller-key limit; 0 = unlimited
 ```
 
-模型解析规则（请求体 `model` 字段）：
+Model resolution (the `model` field in requests):
 
-1. **别名**：命中 `aliases`，路由到对应 `provider/model`
-2. **provider/model**：显式指定
-3. **裸模型名**：匹配已配置 provider 的 `models` 清单
+1. **Alias**: matches `aliases`, routes to `provider/model`
+2. **provider/model**: explicit
+3. **Bare model name**: matches a configured provider's `models` list
 
-配置文件保存后自动热重载，无需重启服务。
+The config file hot-reloads on save — no restart needed.
 
-## Codex 接入示例
+## Codex integration
 
 ```bash
 export OPENAI_BASE_URL=http://127.0.0.1:8080/v1
-export OPENAI_API_KEY=sk-local-xxxx     # 即 config.yaml 里的 master_key
+export OPENAI_API_KEY=sk-local-xxxx     # the master_key from config.yaml
 
-codex --model claude                    # model 直接填别名
+codex --model claude                    # use an alias directly
 ```
 
-model 可填 `aliases` 中的任意别名（如 `claude`、`ds`、`gem`），也可用 `provider/model` 全称（如 `deepseek/deepseek-reasoner`）。切换模型只改别名即可，无需再管各家不同的 base_url 与 key。
+`model` can be any alias, or a `provider/model` full name (e.g. `deepseek/deepseek-reasoner`). Switching models is just changing the alias — no need to juggle per-provider base URLs and keys.
 
-## 多协议统一路由
+## Unified multi-protocol routing
 
-网关以 **Responses 为统一枢纽**，三种输入面任选其一，均可到达任意上游：
+Responses is the canonical hub. Pick any input face; all reach any upstream:
 
-| 输入端点 | 输入格式 | 内部路径 |
+| Endpoint | Input format | Internal path |
 | --- | --- | --- |
-| `POST /v1/chat/completions` | OpenAI Chat | 直达（各家 chat↔原生转换已内置） |
-| `POST /v1/responses` | OpenAI Responses | 上游原生支持则透传；否则 responses→chat→原生→chat→responses |
-| `POST /v1/messages` | Anthropic Messages | anthropic→chat→原生→chat→anthropic |
+| `POST /v1/chat/completions` | OpenAI Chat | direct (chat<->native conversion built in) |
+| `POST /v1/responses` | OpenAI Responses | passthrough if `supports_responses`; else responses->chat->native->chat->responses |
+| `POST /v1/messages` | Anthropic Messages | anthropic->chat->native->chat->anthropic |
 
-`supports_responses: true`（per-provider）标记上游原生支持 Responses，走透传快路径；其余上游自动经 chat 桥接转换。流式同样跨协议转换。
+`supports_responses: true` (per provider) marks an upstream that natively speaks Responses and takes the passthrough fast path; others are bridged through chat. Streaming is converted across protocols too.
 
-## Mixture-of-Agents（MOA）
+## Mixture-of-Agents (MOA)
 
-在 `config.yaml` 定义流水线：
+Define a pipeline in `config.yaml`:
 
 ```yaml
 moa:
@@ -126,33 +125,35 @@ moa:
     aggregator:
       provider: openai
       model: gpt-4o
-    # aggregator_prompt: "自定义综合提示（可选）"
+    # aggregator_prompt: "custom synthesis prompt (optional)"
 ```
 
-请求时 `model` 填 `moa:default`（或 `moa/default`）即可：proposer 并行作答 → aggregator 综合 → 返回。三种输入面都支持（`/v1/chat/completions`、`/v1/responses`、`/v1/messages`），流式会输出 aggregator 的综合过程。单个 proposer 失败会记为注记并继续，不影响整体。
+Set `model` to `moa:default` (or `moa/default`): proposers answer in parallel -> aggregator synthesizes -> returned. All three input faces support it; streaming outputs the aggregator's synthesis. A single proposer failure is recorded as a note and skipped — it never breaks the whole run.
 
-## ## 管理页
+## Admin console
 
-浏览器打开 `http://127.0.0.1:8080/static/admin.html`（或根路径）：
+Open `http://127.0.0.1:8080/` in a browser:
 
-> 进控制台默认无需认证；可在页面内用「鉴权开关」自由开启/关闭 master_key（关闭后控制台与 `/v1/*` 均免认证，仅限本机）。控制台支持直接增删改 Provider / 模型 / 别名 / MOA / 限流，保存后即时热生效。
+> Entering the console requires no auth by default. A toggle in the page lets you turn the `master_key` on/off freely (when off, both the console and `/v1/*` are unauthenticated — local only). The console can add/edit/delete providers, models, aliases, MOA pipelines, and rate limits; changes hot-reload on save.
 
-1. 首屏输入 `master_key`（仅保存在浏览器 localStorage）
-2. **配置总览**：Provider / 模型 / 别名映射表格，密钥已脱敏；可一键健康检查各 Provider 连通性
-3. **用量仪表盘**：近 1/7/30 天按模型聚合的调用次数、Token、平均延迟、成功率，以及最近 50 条调用明细
-4. **模型测试**：下拉选模型 → 发送 “Say hi in one word” → 显示延迟与回复 / 错误
+1. **Config editor**: edit providers / models / aliases / MOA / rate limit / auth toggle; keys are stored only in the local `config.yaml`
+2. **Overview**: masked provider/alias tables, one-click health check
+3. **Usage dashboard**: calls, tokens, latency, success rate over 1/7/30 days, plus the last 50 calls
+4. **Model test**: pick a model -> send "Say hi in one word" -> see latency and reply
 
-管理 API（均需 `Authorization: Bearer <master_key>`）：
+Admin API (require `Authorization: Bearer <master_key>` when auth is on):
 
-| 接口 | 说明 |
+| Endpoint | Description |
 | --- | --- |
-| `GET /admin/api/config` | 当前生效配置（脱敏） |
-| `GET /admin/api/usage/summary?days=7` | 用量聚合 |
-| `GET /admin/api/usage/recent` | 最近调用明细 |
-| `GET /admin/api/health` | 各 Provider 连通性探测 |
-| `POST /admin/api/test` | 模型测试，body `{"model": "别名"}` |
+| `GET /admin/api/config` | current effective config (masked) |
+| `GET /admin/api/config/raw` | full config (unmasked, for the editor) |
+| `PUT /admin/api/config` | save full config (hot-reloads) |
+| `GET /admin/api/usage/summary?days=7` | usage aggregates |
+| `GET /admin/api/usage/recent` | recent calls |
+| `GET /admin/api/health` | provider connectivity probe |
+| `POST /admin/api/test` | model test, body `{"model": "<alias>"}` |
 
-## Docker 运行
+## Docker
 
 ```bash
 docker build -t llm-gateway .
@@ -164,67 +165,69 @@ docker run -d --name llm-gateway \
   llm-gateway
 ```
 
-- `/app/config.yaml`：配置文件（**必需**，挂载后改配置同样热生效）
-- `/app/data`：用量统计数据库目录（可选，不挂载则容器删除后统计数据丢失）
+- `/app/config.yaml`: config file (**required**; mounted changes hot-reload too)
+- `/app/data`: usage DB directory (optional; without it, stats are lost when the container is removed)
 
-## 测试
+## Testing
 
-无需真实 API key，用内置 mock 上游跑端到端冒烟测试（覆盖鉴权、模型列表、三种寻址、三种 provider 协议转换、流式、故障转移、502、Responses 透传、embeddings、管理 API）：
+No real API key needed — the built-in mock upstream runs an end-to-end smoke test (auth, model list, three resolution forms, three provider protocol conversions, streaming, failover, 502, Responses passthrough, embeddings, MOA, config editing, admin API):
 
 ```bash
 .venv/bin/python tests/smoke_test.py
 ```
 
-预期输出 `=== 20/20 passed ===`。mock 上游在同一端口模拟 openai_like / anthropic / gemini 三种协议，并对每个 provider 的第一个 key 注入 500 以验证故障转移。
+Expect `=== 37/37 passed ===`. The mock simulates openai_like / anthropic / gemini on one port and injects a 500 for each provider's first key to verify failover.
 
-## macOS 常驻运行
+## Run as a macOS service
 
-用 launchd 把网关注册为用户服务，开机自启 + 崩溃自动拉起。见 [`contrib/macos/README.md`](contrib/macos/README.md)。
+Register the gateway as a launchd user agent for auto-start + crash recovery. See [`contrib/macos/README.md`](contrib/macos/README.md).
 
-> ⚠️ macOS TCC 会阻止 launchd 执行 `~/Documents`、`~/Desktop`、`~/Downloads` 下的程序（报 `Operation not permitted`），请把仓库放在其他位置（如 `~/llm-gateway`）。
+> ⚠️ macOS TCC blocks launchd from executing programs under `~/Documents`, `~/Desktop`, `~/Downloads` (reporting `Operation not permitted`). Place the repo elsewhere (e.g. `~/llm-gateway`).
 
-## ## 常见上游 base_url 速查表
+## Upstream base_url cheat sheet
 
-| 服务商 | type | base_url |
+| Provider | type | base_url |
 | --- | --- | --- |
 | OpenAI | `openai_like` | `https://api.openai.com/v1` |
 | DeepSeek | `openai_like` | `https://api.deepseek.com/v1` |
 | Moonshot Kimi | `openai_like` | `https://api.moonshot.cn/v1` |
-| 智谱 GLM | `openai_like` | `https://open.bigmodel.cn/api/paas/v4` |
-| 阿里百炼（通义） | `openai_like` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| Zhipu GLM | `openai_like` | `https://open.bigmodel.cn/api/paas/v4` |
+| Alibaba Bailian (Qwen) | `openai_like` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | Google Gemini | `gemini` | `https://generativelanguage.googleapis.com/v1beta` |
 | Anthropic | `anthropic` | `https://api.anthropic.com` |
 
-> Gemini 也可使用其 OpenAI 兼容端点（type 填 `openai_like`）：`https://generativelanguage.googleapis.com/v1beta/openai/`
+> Gemini can also use its OpenAI-compatible endpoint (set `type: openai_like`): `https://generativelanguage.googleapis.com/v1beta/openai/`
 
-## 项目结构
+## Project structure
 
 ```
 app/
-  main.py            # FastAPI 装配与启动入口（含根路径 → 管理页跳转）
-  config.py          # YAML 配置加载 + 热重载
-  router.py          # /v1/chat/completions、/v1/models
-  providers/         # openai_like / anthropic / gemini 协议适配
-  pool.py            # 密钥池：轮询 + 故障转移
-  stats.py           # SQLite 用量统计（aiosqlite）
-  ratelimit.py       # 令牌桶限流
-  admin.py           # 管理 API：/admin/api/*
+  main.py            # FastAPI assembly and entry point (root -> console redirect)
+  config.py          # YAML config loading + hot reload + save
+  router.py          # /v1/chat/completions, /v1/responses, /v1/messages, /v1/models, /v1/embeddings
+  protocol.py        # responses<->chat, anthropic<->chat converters (incl. streaming)
+  moa.py             # Mixture-of-Agents pipeline
+  providers/         # openai_like / anthropic / gemini protocol adapters
+  pool.py            # key pool: round-robin + failover
+  stats.py           # SQLite usage stats (aiosqlite)
+  ratelimit.py       # token-bucket rate limiter
+  admin.py           # admin API: /admin/api/*
 static/
-  admin.html         # 管理页（单文件，无外部依赖）
-config.example.yaml  # 示例配置
+  admin.html         # admin console (single file, no external deps)
+config.example.yaml  # example config
 requirements.txt
 Dockerfile
-tests/               # mock 上游 + 端到端冒烟测试（无需真实 key）
-contrib/macos/       # launchd 常驻示例（plist + 启动脚本）
+tests/               # mock upstream + end-to-end smoke test (no real key needed)
+contrib/macos/       # launchd service example (plist + launch script)
 ```
 
-## 说明
+## Notes
 
-- 所有上游调用默认 60s 超时；健康检查探测超时 5s
-- 用量统计中，流式响应若上游未返回 usage，按字符数 / 4 估算 token
-- `master_key` 是网关唯一凭证，请使用强随机值；暴露到公网时切勿留空
-- 统计数据保存在本地 SQLite，仅用于个人观测，不会上传任何数据
+- All upstream calls default to a 60s timeout; health-check probes time out at 5s
+- For streaming responses where the upstream returns no usage, tokens are estimated as chars / 4
+- `master_key` is the gateway's only credential — use a strong random value; never leave it empty when exposed to a public network
+- Usage data is stored in local SQLite for personal observability only; nothing is uploaded
 
 ## License
 
-MIT © Eran。详见 [LICENSE](LICENSE)。
+MIT © Eran. See [LICENSE](LICENSE).

@@ -1,6 +1,6 @@
-"""SQLite 用量统计（aiosqlite 异步封装）。
+"""SQLite usage stats (async wrapper over aiosqlite).
 
-表结构（见 SPEC.md，不得改动）：
+Schema (see SPEC.md; do not change):
 
     CREATE TABLE IF NOT EXISTS usage (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -9,10 +9,10 @@
       latency_ms INT, status INT, stream INT
     );
 
-用法（与 main.py 的装配方式）：
+Usage (wired by main.py):
 
     stats = StatsStore("data/usage.db")
-    await stats.init()                       # 或 await stats.init("data/usage.db")
+    await stats.init()                       # or await stats.init("data/usage.db")
     app.state.stats = stats
 
     await stats.record(ts=time.time(), api_key="sk-...", model="gpt-4o",
@@ -44,11 +44,11 @@ _DEFAULT_DB_PATH = os.path.join("data", "usage.db")
 
 
 class StatsStore:
-    """用量统计存储。
+    """Usage stats store.
 
-    单连接 + asyncio.Lock：所有读写都在同一把锁下串行执行，
-    因此 record() 可以被任意数量的协程并发调用。
-    数据库同时开启 WAL，便于其他进程/工具只读访问。
+    Single connection + asyncio.Lock: all reads/writes are serialized under one lock,
+    so record() can be called concurrently by any number of coroutines.
+    the DB also enables WAL for read-only access by other processes/tools.
     """
 
     def __init__(self, db_path: str | None = None):
@@ -57,10 +57,10 @@ class StatsStore:
         self._lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
-    # 生命周期
+    # lifecycle
     # ------------------------------------------------------------------
     async def init(self, db_path: str | None = None) -> None:
-        """建立连接并建表。重复调用是安全的（幂等）。"""
+        """Open the connection and create tables. Idempotent."""
         if db_path:
             if self._db is not None and os.path.abspath(db_path) != os.path.abspath(self.db_path):
                 await self.close()
@@ -75,12 +75,12 @@ class StatsStore:
         try:
             await self._db.execute("PRAGMA journal_mode=WAL")
         except Exception:
-            pass  # WAL 不可用时退回默认日志模式，不影响功能
+            pass  # fall back to default logging if WAL is unavailable; functionality unaffected
         await self._db.executescript(_SCHEMA)
         await self._db.commit()
 
     async def close(self) -> None:
-        """关闭连接（服务退出时调用）。"""
+        """Close the connection (called on shutdown)."""
         if self._db is not None:
             await self._db.close()
             self._db = None
@@ -91,11 +91,11 @@ class StatsStore:
 
     def _require_db(self) -> aiosqlite.Connection:
         if self._db is None:
-            raise RuntimeError("StatsStore 未初始化，请先 await stats.init(db_path)")
+            raise RuntimeError("StatsStore not initialized; await stats.init(db_path) first")
         return self._db
 
     # ------------------------------------------------------------------
-    # 写入
+    # write
     # ------------------------------------------------------------------
     async def record(
         self,
@@ -110,7 +110,7 @@ class StatsStore:
         status,
         stream,
     ) -> None:
-        """异步写入一条调用记录（协程安全，可并发调用）。"""
+        """Async-write one call record (coroutine-safe; concurrently callable)."""
         db = self._require_db()
         async with self._lock:
             await db.execute(
@@ -134,19 +134,19 @@ class StatsStore:
             await db.commit()
 
     # ------------------------------------------------------------------
-    # 聚合
+    # aggregate
     # ------------------------------------------------------------------
     async def summary(self, days: int = 7) -> dict:
-        """按模型和 provider 聚合最近 N 天的用量。
+        """Aggregate usage over the last N days by model and provider.
 
-        返回：
+        Returns:
             {
               "days": 7,
-              "since": <起始时间戳>,
+              "since": <start timestamp>,
               "totals":      {calls, prompt_tokens, completion_tokens,
                               total_tokens, avg_latency_ms, success_rate},
-              "by_model":    [{model, 同上聚合字段...}, ...],   # 按调用次数降序
-              "by_provider": [{provider, 同上聚合字段...}, ...]
+              "by_model":    [{model, same aggregate fields...}, ...],   # desc by call count
+              "by_provider": [{provider, same aggregate fields...}, ...]
             }
         """
         db = self._require_db()
@@ -213,10 +213,10 @@ class StatsStore:
         }
 
     # ------------------------------------------------------------------
-    # 明细
+    # recent
     # ------------------------------------------------------------------
     async def recent(self, limit: int = 50) -> list:
-        """最近的调用明细（按写入先后倒序）。"""
+        """Recent call details (reverse insertion order)."""
         db = self._require_db()
         limit = min(max(1, _to_int(limit, default=50)), 1000)
         async with self._lock:
@@ -246,7 +246,7 @@ class StatsStore:
 
 
 def _to_int(value, default: int = 0) -> int:
-    """宽松地把输入转成 int（None/空串/浮点都能接受）。"""
+    """Leniently coerce input to int (accepts None/empty/float)."""
     if value is None or value == "":
         return default
     try:
@@ -259,7 +259,7 @@ def _to_int(value, default: int = 0) -> int:
 
 
 # ----------------------------------------------------------------------
-# 模块级默认实例的便捷函数（签名与实例方法一致，方便简单场景直接使用）
+# convenience functions over a module-level default instance (same signatures as instance methods, for simple use)
 # ----------------------------------------------------------------------
 default_store = StatsStore()
 

@@ -1,14 +1,14 @@
-"""协议转换核心：以 chat.completions 为内部执行层，Responses / Anthropic Messages
-作为输入输出面。
+"""Protocol conversion core: chat.completions is the internal execution layer; Responses / Anthropic Messages
+act as input/output faces.
 
-转换矩阵（均含非流式 + 流式）：
-  responses <-> chat        （让 /v1/responses 能到达任意上游）
-  anthropic <-> chat        （让 /v1/messages 能到达任意上游；复用 providers 里的
-                              chat->anthropic 方向，这里补 anthropic->chat 方向）
+Conversion matrix (all include non-stream + stream):
+  responses <-> chat        （lets /v1/responses reach any upstream)
+  anthropic <-> chat        （lets /v1/messages reach any upstream; reuses the providers'
+                              chat->anthropic; this file adds the anthropic->chat direction)
 
-工具健壮性：
-  - normalize_tool_calls：补 id、保证 arguments 是合法 JSON
-  - repair_arguments：非法 JSON 兜底为 {"_raw": ...}，避免客户端解析崩溃
+Tool robustness:
+  - normalize_tool_calls: fill ids, ensure arguments is valid JSON
+  - repair_arguments: invalid JSON falls back to {"_raw": ...} to avoid client parse crashes
 """
 
 from __future__ import annotations
@@ -18,9 +18,9 @@ import time
 import uuid
 from typing import AsyncIterator, Iterable
 
-# ============================================================ 工具健壮性
+# ============================================================ tool robustness
 def repair_arguments(args) -> str:
-    """保证 tool_call.arguments 是合法 JSON 字符串。"""
+    """Ensure tool_call.arguments is a valid JSON string."""
     if args is None:
         return "{}"
     if isinstance(args, (dict, list)):
@@ -30,12 +30,12 @@ def repair_arguments(args) -> str:
         json.loads(s)
         return s
     except (json.JSONDecodeError, TypeError):
-        # 非法 JSON：包裹成 _raw，让客户端拿到可解析的对象而非崩在 JSON 解析
+        # invalid JSON: wrap as _raw so the client gets a parseable object instead of crashing on JSON parse
         return json.dumps({"_raw": s}, ensure_ascii=False)
 
 
 def normalize_tool_calls(tool_calls: list | None) -> list[dict]:
-    """规整 OpenAI tool_calls：补 id、修 arguments。"""
+    """Normalize OpenAI tool_calls: fill ids, repair arguments."""
     out: list[dict] = []
     for i, tc in enumerate(tool_calls or []):
         if not isinstance(tc, dict):
@@ -54,7 +54,7 @@ def normalize_tool_calls(tool_calls: list | None) -> list[dict]:
 
 # ============================================================ responses -> chat
 def responses_req_to_chat(body: dict) -> dict:
-    """OpenAI Responses 请求 -> chat.completions 请求。"""
+    """OpenAI Responses request -> chat.completions request."""
     out: dict = {"model": body.get("model")}
     messages: list[dict] = []
 
@@ -92,7 +92,7 @@ def responses_req_to_chat(body: dict) -> dict:
             elif role in ("user", "assistant", "system"):
                 content = _parts_to_text(item.get("content"), role == "assistant")
                 msg = {"role": role, "content": content}
-                # assistant 消息可能内嵌 function_call
+                # assistant messages may embed function_call
                 calls = [c for c in (item.get("content") or [])
                          if isinstance(c, dict) and c.get("type") == "function_call"]
                 if role == "assistant" and calls:
@@ -126,7 +126,7 @@ def responses_req_to_chat(body: dict) -> dict:
 
 
 def _parts_to_text(content, assistant_text_only: bool = False) -> str:
-    """Responses content parts -> 纯文本（忽略 function_call，由调用方单独处理）。"""
+    """Responses content parts -> plain text (function_call ignored; handled separately by the caller)."""
     if content is None:
         return ""
     if isinstance(content, str):
@@ -139,14 +139,14 @@ def _parts_to_text(content, assistant_text_only: bool = False) -> str:
         if ptype in ("input_text", "output_text", "text"):
             parts.append(str(p.get("text", "")))
         elif ptype == "input_image":
-            # 图片在纯文本通道无法承载，跳过（上层可走原生路径）
+            # images can't be carried on the text channel; skipped (upper layers may take the native path)
             continue
     return "".join(parts)
 
 
 # ============================================================ chat -> responses
 def chat_resp_to_responses(data: dict, model: str) -> dict:
-    """chat.completion 响应 -> Responses 响应。"""
+    """chat.completion response -> Responses response."""
     choice = (data.get("choices") or [{}])[0]
     msg = choice.get("message") or {}
     text = msg.get("content")
@@ -187,7 +187,7 @@ def chat_resp_to_responses(data: dict, model: str) -> dict:
 
 async def chat_stream_to_responses(agen: AsyncIterator[bytes], model: str,
                                    want_usage: bool) -> AsyncIterator[bytes]:
-    """chat SSE 流 -> Responses SSE 事件流。"""
+    """chat SSE stream -> Responses SSE event stream."""
     rid = f"resp_{uuid.uuid4().hex[:24]}"
     created = int(time.time())
 
@@ -224,7 +224,7 @@ async def chat_stream_to_responses(agen: AsyncIterator[bytes], model: str,
             total_tokens = usage.get("total_tokens", total_tokens) or 0
         for choice in chunk.get("choices") or []:
             delta = choice.get("delta") or {}
-            # 文本
+            # text
             content = delta.get("content")
             if content:
                 if not msg_added:
@@ -239,7 +239,7 @@ async def chat_stream_to_responses(agen: AsyncIterator[bytes], model: str,
                     text_started = True
                 yield ev("response.output_text.delta",
                          {"output_index": 0, "content_index": 0, "delta": content})
-            # 工具调用
+            # tool calls
             for tc in delta.get("tool_calls") or []:
                 idx = tc.get("index", 0)
                 buf = tool_buffers.setdefault(idx, {
@@ -267,7 +267,7 @@ async def chat_stream_to_responses(agen: AsyncIterator[bytes], model: str,
             if choice.get("finish_reason"):
                 finish_reason = choice["finish_reason"]
 
-    # 收尾
+    # finalize
     if text_started:
         yield ev("response.output_text.done", {"output_index": 0, "content_index": 0, "text": ""})
         yield ev("response.content_part.done", {"output_index": 0, "content_index": 0,
@@ -298,7 +298,7 @@ async def chat_stream_to_responses(agen: AsyncIterator[bytes], model: str,
 
 # ============================================================ anthropic -> chat
 def anthropic_req_to_chat(body: dict) -> dict:
-    """Anthropic Messages 请求 -> chat.completions 请求。"""
+    """Anthropic Messages request -> chat.completions request."""
     out: dict = {"model": body.get("model")}
     messages: list[dict] = []
     sys = body.get("system")
@@ -370,13 +370,13 @@ def _anthropic_assistant_parts(content):
                     "arguments": repair_arguments(b.get("input")),
                 },
             })
-    # tool_result 出现在 user 回合，这里不处理
+    # tool_result appears in a user turn; not handled here
     return "".join(text_parts), tool_calls
 
 
 # ============================================================ chat -> anthropic
 def chat_resp_to_anthropic(data: dict, model: str) -> dict:
-    """chat.completion 响应 -> Anthropic Messages 响应。"""
+    """chat.completion response -> Anthropic Messages response."""
     choice = (data.get("choices") or [{}])[0]
     msg = choice.get("message") or {}
     text = msg.get("content")
@@ -410,7 +410,7 @@ def chat_resp_to_anthropic(data: dict, model: str) -> dict:
 
 
 async def chat_stream_to_anthropic(agen: AsyncIterator[bytes], model: str) -> AsyncIterator[bytes]:
-    """chat SSE 流 -> Anthropic Messages SSE 事件流。"""
+    """chat SSE stream -> Anthropic Messages SSE event stream."""
     mid = f"msg_{uuid.uuid4().hex[:24]}"
 
     def ev(etype: str, payload: dict) -> bytes:
@@ -463,7 +463,7 @@ async def chat_stream_to_anthropic(agen: AsyncIterator[bytes], model: str) -> As
                 if fn.get("name"):
                     buf["name"] = fn["name"]
                 if buf["block_index"] is None:
-                    # 关闭当前 text block，开启 tool_use block
+                    # close the current text block, open a tool_use block
                     yield ev("content_block_stop", {"type": "content_block_stop", "index": block_idx})
                     block_idx += 1
                     buf["block_index"] = block_idx

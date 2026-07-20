@@ -1,9 +1,9 @@
-"""YAML 配置加载 + 模型别名解析 + 按文件 mtime 热重载。
+"""YAML config loading + model alias resolution + hot reload by file mtime.
 
-配置格式见 SPEC.md / config.example.yaml：
+Config format see SPEC.md / config.example.yaml:
 - server: host/port/master_key
-- providers: 各 provider 的 type/base_url/keys/models
-- aliases: 模型别名 → "provider/真实模型名"
+- providers: each provider's type/base_url/keys/models
+- aliases: model alias -> "provider/real-model"
 - rate_limit: requests_per_minute
 """
 
@@ -16,12 +16,12 @@ import yaml
 
 logger = logging.getLogger("llm-gateway.config")
 
-# 配置文件不存在 / 解析失败时的兜底空配置
+# Fallback empty config when the config file is missing / fails to parse
 _EMPTY: dict = {"server": {}, "providers": {}, "aliases": {}, "rate_limit": {}}
 
 
 class GatewayConfig:
-    """网关配置对象，按 mtime 检测变更并热重载。"""
+    """Gateway config object; detects changes by mtime and hot-reloads."""
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
@@ -29,29 +29,29 @@ class GatewayConfig:
         self._data: dict = dict(_EMPTY)
         self.load()
 
-    # ------------------------------------------------------------------ 加载
+    # ------------------------------------------------------------------ load
     def load(self) -> None:
-        """读取并解析 YAML；失败时保留上一份可用配置。"""
+        """Read and parse YAML; keep the last valid config on failure."""
         try:
             text = self.path.read_text(encoding="utf-8")
         except FileNotFoundError:
-            # 配置文件缺失：首次启动给空配置，之后保留旧配置
+            # Config file missing: empty config on first start, otherwise keep the previous one
             self._mtime = None
-            logger.warning("配置文件不存在: %s", self.path)
+            logger.warning("config file not found: %s", self.path)
             return
         try:
             data = yaml.safe_load(text) or {}
             if not isinstance(data, dict):
-                raise ValueError("配置顶层必须是 mapping")
-        except Exception as exc:  # YAML 语法错误等
-            logger.error("配置解析失败，保留旧配置: %s", exc)
+                raise ValueError("config top level must be a mapping")
+        except Exception as exc:  # YAML syntax error etc.
+            logger.error("config parse failed, keeping previous config: %s", exc)
             return
         self._data = data
         self._mtime = self.path.stat().st_mtime
-        logger.info("配置已加载: %s", self.path)
+        logger.info("config loaded: %s", self.path)
 
     def save(self, data: dict) -> None:
-        """把整份配置写回 config.yaml 并重载（管理页编辑后调用）。"""
+        """Write the full config back to config.yaml and reload (called after admin edits)."""
         text = yaml.safe_dump(data or {}, allow_unicode=True, sort_keys=False)
         self.path.write_text(text, encoding="utf-8")
         try:
@@ -61,7 +61,7 @@ class GatewayConfig:
         self.load()
 
     def maybe_reload(self) -> bool:
-        """若文件 mtime 变化则重载，返回是否发生了重载。"""
+        """Reload if the file mtime changed; return whether a reload happened."""
         try:
             mtime = self.path.stat().st_mtime
         except FileNotFoundError:
@@ -71,7 +71,7 @@ class GatewayConfig:
             return True
         return False
 
-    # ------------------------------------------------------------------ 访问
+    # ------------------------------------------------------------------ access
     @property
     def server(self) -> dict:
         return self._data.get("server") or {}
@@ -97,39 +97,39 @@ class GatewayConfig:
         return self._data
 
     def dict(self) -> dict:
-        """pydantic v1 风格导出（供 admin 等模块把配置对象转纯 dict）。"""
+        """pydantic v1-style export (lets admin etc. turn the config object into a plain dict)."""
         return dict(self._data)
 
-    # ------------------------------------------------------------- 模型解析
+    # ------------------------------------------------------------- model resolution
     def resolve_model(self, model: str) -> tuple[str, str]:
-        """把请求中的模型名解析为 (provider 名, 真实模型名)。
+        """Resolve the request model name to (provider name, real model name).
 
-        支持三种写法（SPEC 接口契约）：
-        1. 别名：aliases 里配置的短名（可链式，防环）
-        2. "provider/model" 显式指定
-        3. 已配置 provider 的 models 列表中的模型名（自动匹配）
-        未命中抛 KeyError。
+        Supports three forms (SPEC contract):
+        1. alias: short name configured in aliases (chainable, cycle-safe)
+        2. "provider/model" explicit
+        3. a model name in a configured provider's models list (auto-matched)
+        raises KeyError if unmatched.
         """
         if not model:
             raise KeyError(model)
 
-        # 1. 别名解析（允许别名指向别名，防环）
+        # 1. alias resolution (aliases may point to aliases, cycle-safe)
         seen: set[str] = set()
         cur = model
         while cur in self.aliases and cur not in seen:
             seen.add(cur)
             cur = str(self.aliases[cur])
-        if cur in self.aliases:  # 有环，停在原地
+        if cur in self.aliases:  # cycle; stop here
             cur = model
 
-        # 2. provider/model 显式写法
+        # 2. provider/model explicit form
         if "/" in cur:
             provider_name, real = cur.split("/", 1)
             if provider_name in self.providers and real:
                 return provider_name, real
-            # 前缀不是已配置 provider → 继续按模型名查找，最后未命中会抛 KeyError
+            # prefix is not a configured provider -> continue by model name; raises KeyError if unmatched
 
-        # 3. 在各 provider 的 models 列表里查找
+        # 3. look up in each provider's models list
         for provider_name, pcfg in self.providers.items():
             models = (pcfg or {}).get("models") or []
             if cur in models:

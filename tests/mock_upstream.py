@@ -1,16 +1,16 @@
-"""本地 mock 上游（tests 用）：在原版基础上新增 /v1/responses、/v1/embeddings 端点。
+"""Local mock upstream (for tests): adds /v1/responses and /v1/embeddings endpoints on top of the original.
 
-原版：本地 mock 上游：同一端口模拟 openai_like / anthropic / gemini 三种协议。
+Original: local mock upstream simulating openai_like / anthropic / gemini on one port.
 
 - POST /v1/chat/completions          openai_like（Authorization: Bearer <key>）
 - POST /v1/messages                  anthropic Messages API（x-api-key）
-- POST /v1beta/models/<m>:generateContent        gemini 非流式（?key=）
-- POST /v1beta/models/<m>:streamGenerateContent  gemini 流式（?alt=sse&key=）
-- GET  /v1/models /v1beta/models     健康检查探测
+- POST /v1beta/models/<m>:generateContent        gemini non-stream (?key=)
+- POST /v1beta/models/<m>:streamGenerateContent  gemini streaming (?alt=sse&key=)
+- GET  /v1/models /v1beta/models     health-check probe
 
-故障注入：每个 provider 的第一个 key 返回 500（用于验证故障转移）：
+Fault injection: each provider's first key returns 500 (to verify failover):
   sk-fake1 / sk-ant-fake1 / AIzaFake1 -> 500
-流式：逐 chunk 发送，间隔 0.2s。
+Streaming: sends chunk by chunk with a 0.2s interval.
 """
 import json
 import re
@@ -38,7 +38,7 @@ def openai_chunk(cid, created, model, delta=None, finish=None):
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
-    def log_message(self, *a):  # 静默
+    def log_message(self, *a):  # silent
         pass
 
     def _read_body(self):
@@ -58,11 +58,11 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _send_sse(self, events):
-        """events: list of bytes（每项一个 SSE 事件块），0.2s 间隔逐个发送。"""
+        """events: list of bytes (one SSE event block each), sent one by one with a 0.2s interval."""
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
-        # 不设 Content-Length：连接关闭即结束（HTTP/1.0 风格分隔）
+        # no Content-Length: the close ends the response (HTTP/1.0-style delimiter)
         self.send_header("Connection", "close")
         self.end_headers()
         for ev in events:
@@ -71,7 +71,7 @@ class Handler(BaseHTTPRequestHandler):
             time.sleep(CHUNK_INTERVAL)
         self.close_connection = True
 
-    # ------------------------------------------------------------- GET（健康检查）
+    # ------------------------------------------------------------- GET (health check)
     def do_GET(self):
         if self.path.startswith("/v1/models") or self.path.startswith("/v1beta/models"):
             self._send_json(200, {"object": "list", "data": []})
@@ -155,7 +155,7 @@ class Handler(BaseHTTPRequestHandler):
         if "boom" in str(body.get("model", "")):
             return self._send_json(500, {"error": {"message": "model boom always fails"}})
         if "tool-bad" in str(body.get("model", "")):
-            # 故意返回非法 arguments，用于验证网关工具修复
+            # intentionally returns invalid arguments, to verify the gateway's tool repair
             bad = {"id": "chatcmpl-bad", "object": "chat.completion", "created": int(time.time()),
                    "model": body.get("model", "?"),
                    "choices": [{"index": 0, "message": {"role": "assistant", "content": None,
@@ -173,7 +173,7 @@ class Handler(BaseHTTPRequestHandler):
             events += [openai_chunk(cid, created, body.get("model","?"), {}, "tool_calls"), b"data: [DONE]\n\n"]
             return self._send_sse(events)
         if "stream-break" in str(body.get("model", "")) and stream:
-            # 流式：发一个 chunk 后模拟上游中断
+            # streaming: send one chunk then simulate an upstream break
             cid, created = "chatcmpl-brk", int(time.time())
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -182,7 +182,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(openai_chunk(cid, created, body.get("model","?"), {"content": "par"}))
             self.wfile.flush()
-            raise ConnectionError("模拟上游中断")
+            raise ConnectionError("simulated upstream break")
         if key in BAD_KEYS:
             return self._send_json(500, {"error": {"message": f"key {key} exploded",
                                                    "type": "server_error"}})

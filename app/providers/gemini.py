@@ -1,9 +1,9 @@
-"""Google Gemini API ↔ OpenAI 格式双向转换（含流式 SSE）。
+"""Bidirectional Google Gemini API <-> OpenAI format conversion (incl. streaming SSE).
 
-- 端点：:generateContent（非流式）/ :streamGenerateContent?alt=sse（流式）
-- 鉴权：API key 走 query 参数 ?key=
-- 请求：OpenAI messages → contents（user/model 角色）+ systemInstruction
-- 响应：candidates → OpenAI choices / chunk
+- endpoints: :generateContent (non-stream) / :streamGenerateContent?alt=sse (stream)
+- auth: API key via the ?key= query param
+- request: OpenAI messages -> contents (user/model roles) + systemInstruction
+- response: candidates -> OpenAI choices / chunk
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import httpx
 
 from . import ProviderBase, UpstreamError, get_client, register
 
-# Gemini finishReason → OpenAI finish_reason
+# Gemini finishReason -> OpenAI finish_reason
 _FINISH_MAP = {
     "STOP": "stop",
     "MAX_TOKENS": "length",
@@ -34,7 +34,7 @@ def _map_finish(reason) -> str:
     return _FINISH_MAP.get(reason or "", "stop")
 
 
-# ================================================================== 请求转换
+# ================================================================== request convert
 def _content_to_text(content) -> str:
     if content is None:
         return ""
@@ -50,7 +50,7 @@ def _content_to_text(content) -> str:
 
 
 def _user_parts(content) -> list[dict]:
-    """OpenAI 用户 content → Gemini parts（文本 / inline_data 图片）。"""
+    """OpenAI user content -> Gemini parts (text / inline_data image)."""
     if isinstance(content, str) or content is None:
         return [{"text": content or ""}]
     parts: list[dict] = []
@@ -64,12 +64,12 @@ def _user_parts(content) -> list[dict]:
             if url.startswith("data:") and ";base64," in url:
                 mime, data = url[5:].split(";base64,", 1)
                 parts.append({"inline_data": {"mime_type": mime, "data": data}})
-            # 远程 URL 图片忽略（Gemini 需 file_data，此处不展开），不报错
+            # remote URL images are ignored (Gemini needs file_data; not expanded here), no error
     return parts or [{"text": ""}]
 
 
 def _assistant_parts(msg: dict) -> list[dict]:
-    """assistant 消息 → Gemini parts（文本 + functionCall）。"""
+    """assistant message -> Gemini parts (text + functionCall)."""
     parts: list[dict] = []
     text = _content_to_text(msg.get("content"))
     if text:
@@ -89,7 +89,7 @@ def _assistant_parts(msg: dict) -> list[dict]:
 
 
 def _convert_tools(body: dict) -> list[dict]:
-    """OpenAI tools → Gemini functionDeclarations。"""
+    """OpenAI tools -> Gemini functionDeclarations。"""
     decls = []
     for t in body.get("tools") or []:
         if not isinstance(t, dict):
@@ -101,12 +101,12 @@ def _convert_tools(body: dict) -> list[dict]:
                 decl["parameters"] = fn["parameters"]
             decls.append(decl)
         elif t.get("name"):
-            decls.append(t)  # 已接近 Gemini 格式则透传
+            decls.append(t)  # already close to Gemini format, pass through
     return [{"functionDeclarations": decls}] if decls else []
 
 
 def convert_request(body: dict) -> dict:
-    """OpenAI chat.completions 请求体 → Gemini generateContent 请求体。"""
+    """OpenAI chat.completions request body -> Gemini generateContent request body."""
     contents: list[dict] = []
     system_parts: list[str] = []
     for msg in body.get("messages") or []:
@@ -122,7 +122,7 @@ def convert_request(body: dict) -> dict:
         elif role == "assistant":
             contents.append({"role": "model", "parts": _assistant_parts(msg)})
         elif role == "tool":
-            # OpenAI tool 结果 → Gemini functionResponse（放在 user 回合）
+            # OpenAI tool result -> Gemini functionResponse (placed in a user turn)
             contents.append(
                 {
                     "role": "user",
@@ -136,7 +136,7 @@ def convert_request(body: dict) -> dict:
                     ],
                 }
             )
-        # 其他角色忽略，不报错
+        # other roles ignored, no error
 
     payload: dict = {"contents": contents}
     if system_parts:
@@ -164,9 +164,9 @@ def convert_request(body: dict) -> dict:
     return payload
 
 
-# ================================================================== 响应转换
+# ================================================================== response convert
 def _candidate_to_message_and_finish(candidate: dict) -> tuple[dict, str]:
-    """candidate → (OpenAI message, finish_reason)。"""
+    """candidate -> (OpenAI message, finish_reason)。"""
     text_parts: list[str] = []
     tool_calls: list[dict] = []
     content = candidate.get("content") or {}
@@ -197,12 +197,12 @@ def _candidate_to_message_and_finish(candidate: dict) -> tuple[dict, str]:
 
 
 def convert_response(data: dict, model: str) -> dict:
-    """Gemini generateContent 响应 JSON → OpenAI chat.completion JSON。"""
+    """Gemini generateContent response JSON -> OpenAI chat.completion JSON."""
     candidates = data.get("candidates") or []
     if candidates:
         message, finish = _candidate_to_message_and_finish(candidates[0])
     else:
-        # 无候选（如 prompt 被拦截）
+        # no candidates (e.g. prompt blocked)
         block = (data.get("promptFeedback") or {}).get("blockReason")
         message = {"role": "assistant", "content": ""}
         finish = "content_filter" if block else "stop"
@@ -224,7 +224,7 @@ def convert_response(data: dict, model: str) -> dict:
     }
 
 
-# ================================================================== 流式转换
+# ================================================================== stream convert
 def _chunk(chat_id: str, created: int, model: str, delta: dict | None = None,
            finish: str | None = None) -> bytes:
     obj = {
@@ -239,7 +239,7 @@ def _chunk(chat_id: str, created: int, model: str, delta: dict | None = None,
 
 async def convert_stream(lines: AsyncIterator[str], model: str,
                          want_usage: bool = False) -> AsyncIterator[bytes]:
-    """Gemini streamGenerateContent?alt=sse 行流 → OpenAI chunk 字节流。"""
+    """Gemini streamGenerateContent?alt=sse line stream -> OpenAI chunk byte stream."""
     chat_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
     created = int(time.time())
     role_sent = False
@@ -328,16 +328,16 @@ async def convert_stream(lines: AsyncIterator[str], model: str,
 # ================================================================== Provider
 @register("gemini")
 class GeminiProvider(ProviderBase):
-    """Google Gemini provider（key 走 query 参数）。"""
+    """Google Gemini provider (key via query param)."""
 
     def _url(self, model: str, stream: bool, api_key: str) -> str:
         action = "streamGenerateContent" if stream else "generateContent"
         base = self.base_url
-        # 兼容 base_url 已带 /v1beta（或 /v1）后缀的写法，避免重复拼接
+        # tolerate base_url already having a /v1beta (or /v1) suffix to avoid double concatenation
         if not base.endswith(("/v1beta", "/v1")):
             base = f"{base}/v1beta"
         url = f"{base}/models/{quote(model, safe='')}:{action}"
-        # 流式必须 alt=sse；key 一律走 query 参数
+        # streaming requires alt=sse; key always via query param
         return f"{url}?{'alt=sse&' if stream else ''}key={api_key}"
 
     async def chat_completions(

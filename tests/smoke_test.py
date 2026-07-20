@@ -1,10 +1,10 @@
-"""端到端冒烟测试（SPEC 验收第 2 条）。
+"""End-to-end smoke test (SPEC acceptance item 2).
 
-启动本地 mock 上游 + 网关，黑盒验证：鉴权、模型列表、三种寻址、
-三种 provider 协议转换、流式、故障转移、502、Responses 透传、
-embeddings 透传、管理 API。无需真实 API key。
+Starts a local mock upstream + gateway and black-box verifies: auth, model list, three resolution forms, 
+three provider protocol conversions, streaming, failover, 502, Responses passthrough, 
+embeddings passthrough, admin API. No real API key needed.
 
-用法：.venv/bin/python tests/smoke_test.py
+Usage: .venv/bin/python tests/smoke_test.py
 """
 from __future__ import annotations
 
@@ -98,100 +98,100 @@ rate_limit:
     )
     try:
         if not wait_port(MOCK_PORT):
-            print("FATAL mock 未启动"); return 2
+            print("FATAL mock not started"); return 2
         if not wait_port(GW_PORT):
-            print("FATAL 网关未启动"); return 2
+            print("FATAL gateway not started"); return 2
         time.sleep(0.5)
         h = {"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"}
 
-        # 1-2 鉴权
-        check("无鉴权 401", httpx.get(f"{BASE}/models").status_code == 401)
-        check("错误 key 401",
+        # 1-2 auth
+        check("no-auth 401", httpx.get(f"{BASE}/models").status_code == 401)
+        check("wrong key 401",
               httpx.get(f"{BASE}/models", headers={"Authorization": "Bearer wrong"}).status_code == 401)
 
-        # 3 模型列表
+        # 3 model list
         r = httpx.get(f"{BASE}/models", headers=h)
         check("/v1/models 200", r.status_code == 200)
         ids = {x["id"] for x in r.json()["data"]}
-        check("models 含别名", {"gpt", "claude", "gem"} <= ids, str(ids))
-        check("models 含底层模型",
+        check("models include aliases", {"gpt", "claude", "gem"} <= ids, str(ids))
+        check("models include base models",
               {"gpt-4o", "claude-sonnet-4-5", "gemini-2.5-flash"} <= ids, str(ids))
-        check("models 含 moa pipeline", "moa:default" in ids, str(ids))
+        check("models include moa pipeline", "moa:default" in ids, str(ids))
 
-        # 4 openai 非流式（首个 key sk-fake1 故障 -> 自动转移 sk-good1）
+        # 4 openai non-stream (first key sk-fake1 fails -> auto-failover sk-good1)
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
                        json={"model": "gpt", "messages": [{"role": "user", "content": "hi"}]}).json()
-        check("openai 别名 chat + 故障转移",
+        check("openai alias chat + failover",
               r["choices"][0]["message"]["content"] == "Hello from mock openai!")
 
-        # 5 anthropic 转换
+        # 5 anthropic convert
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
                        json={"model": "claude", "messages": [{"role": "user", "content": "hi"}]}).json()
-        check("anthropic 转换 chat",
+        check("anthropic conversion chat",
               r["choices"][0]["message"]["content"] == "Hi from mock claude!")
 
-        # 6 gemini 转换
+        # 6 gemini convert
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
                        json={"model": "gem", "messages": [{"role": "user", "content": "hi"}]}).json()
-        check("gemini 转换 chat",
+        check("gemini conversion chat",
               r["choices"][0]["message"]["content"] == "Yo from mock gemini!")
 
-        # 7 流式
+        # 7 streaming
         with httpx.stream("POST", f"{BASE}/chat/completions", headers=h,
                           json={"model": "gpt", "messages": [{"role": "user", "content": "hi"}],
                                 "stream": True}) as s:
             txt = b"".join(s.iter_bytes()).decode("utf-8", "ignore")
-        check("流式含 [DONE]", "data: [DONE]" in txt, txt[:100])
-        check("流式含 chunk", "chat.completion.chunk" in txt)
+        check("stream has [DONE]", "data: [DONE]" in txt, txt[:100])
+        check("stream has chunk", "chat.completion.chunk" in txt)
 
-        # 8 未知模型 404
+        # 8 unknown model 404
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
                        json={"model": "no-such", "messages": [{"role": "user", "content": "hi"}]})
-        check("未知模型 404", r.status_code == 404, str(r.status_code))
+        check("unknown model 404", r.status_code == 404, str(r.status_code))
 
-        # 9 provider/model 显式
+        # 9 provider/model explicit
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
                        json={"model": "openai/gpt-4o", "messages": [{"role": "user", "content": "hi"}]})
-        check("provider/model 显式寻址", r.status_code == 200, str(r.status_code))
+        check("provider/model explicit", r.status_code == 200, str(r.status_code))
 
-        # 10 Responses 透传（openai_like 原生 supports_responses）
+        # 10 Responses passthrough (openai_like native supports_responses)
         r = httpx.post(f"{BASE}/responses", headers=h,
                        json={"model": "gpt", "input": "hi"}).json()
-        check("responses 透传 status=completed", r.get("status") == "completed", str(r)[:120])
+        check("responses passthrough completed", r.get("status") == "completed", str(r)[:120])
 
-        # 10b Responses 经转换到达 anthropic 上游
+        # 10b Responses converted to reach the anthropic upstream
         r = httpx.post(f"{BASE}/responses", headers=h,
                        json={"model": "claude", "input": "hi"}).json()
-        check("responses->anthropic 转换 completed", r.get("status") == "completed", str(r)[:120])
+        check("responses->anthropic converted completed", r.get("status") == "completed", str(r)[:120])
 
-        # 10c Responses 经转换到达 gemini 上游
+        # 10c Responses converted to reach the gemini upstream
         r = httpx.post(f"{BASE}/responses", headers=h,
                        json={"model": "gem", "input": "hi"}).json()
-        check("responses->gemini 转换 completed", r.get("status") == "completed", str(r)[:120])
+        check("responses->gemini converted completed", r.get("status") == "completed", str(r)[:120])
 
-        # 10d Responses 流式（转换路径 anthropic）
+        # 10d Responses streaming (convert path, anthropic)
         with httpx.stream("POST", f"{BASE}/responses", headers=h,
                           json={"model": "claude", "input": "hi", "stream": True}) as st:
             txt = b"".join(st.iter_bytes()).decode("utf-8", "ignore")
-        check("responses 流式含 completed", "response.completed" in txt, txt[:120])
+        check("responses stream has completed", "response.completed" in txt, txt[:120])
 
-        # 10e /v1/messages（Anthropic 输入）到达 openai 上游
+        # 10e /v1/messages (Anthropic input) reaches the openai upstream
         r = httpx.post(f"{BASE}/messages", headers=h,
                        json={"model": "gpt", "max_tokens": 50,
                              "messages": [{"role": "user", "content": "hi"}]})
         check("messages->openai 200", r.status_code == 200, str(r.status_code) + r.text[:100])
         if r.status_code == 200:
             d = r.json()
-            check("messages 返回 anthropic 格式",
+            check("messages returns anthropic format",
                   d.get("type") == "message" and d.get("content"), str(d)[:120])
 
-        # 10f /v1/messages 到达 anthropic 上游（anthropic->chat->anthropic）
+        # 10f /v1/messages reaches the anthropic upstream (anthropic->chat->anthropic)
         r = httpx.post(f"{BASE}/messages", headers=h,
                        json={"model": "claude", "max_tokens": 50,
                              "messages": [{"role": "user", "content": "hi"}]})
         check("messages->anthropic 200", r.status_code == 200, str(r.status_code))
 
-        # 11 工具修复：tool-bad 上游返回非法 arguments，网关应规整为合法 JSON
+        # 11 tool repair: tool-bad upstream returns invalid arguments; the gateway should normalize to valid JSON
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
                        json={"model": "openai/tool-bad", "messages": [{"role": "user", "content": "x"}]})
         check("tool-bad 200", r.status_code == 200, str(r.status_code))
@@ -202,72 +202,72 @@ rate_limit:
                 _j.loads(args); ok = True
             except Exception:
                 ok = False
-            check("tool arguments 已修复为合法 JSON", ok, args[:80])
+            check("tool arguments repaired to valid JSON", ok, args[:80])
 
-        # 11b 流式中断不断流：stream-break 发一 chunk 后断，网关应合成 [DONE]
+        # 11b broken stream stays open: stream-break sends one chunk then drops; the gateway should synthesize [DONE]
         with httpx.stream("POST", f"{BASE}/chat/completions", headers=h,
                           json={"model": "openai/stream-break", "stream": True,
                                 "messages": [{"role": "user", "content": "x"}]}) as st:
             txt = b"".join(st.iter_bytes()).decode("utf-8", "ignore")
-        check("流式中断合成 [DONE]", "data: [DONE]" in txt, txt[:120])
+        check("broken stream synthesizes [DONE]", "data: [DONE]" in txt, txt[:120])
 
-        # 11c MOA（chat 面，非流式）
+        # 11c MOA (chat face, non-stream)
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
                        json={"model": "moa:default",
                              "messages": [{"role": "user", "content": "hi"}]})
         check("MOA chat 200", r.status_code == 200, str(r.status_code) + r.text[:120])
         if r.status_code == 200:
             c = r.json()["choices"][0]["message"].get("content")
-            check("MOA 有综合内容", bool(c), str(c)[:80])
+            check("MOA has synthesized content", bool(c), str(c)[:80])
 
-        # 11d MOA（responses 面，非流式）
+        # 11d MOA (responses face, non-stream)
         r = httpx.post(f"{BASE}/responses", headers=h,
                        json={"model": "moa:default", "input": "hi"})
         check("MOA responses 200 completed", r.status_code == 200 and r.json().get("status") == "completed",
               str(r.status_code) + r.text[:100])
 
-        # 11e MOA（chat 面，流式）
+        # 11e MOA (chat face, streaming)
         with httpx.stream("POST", f"{BASE}/chat/completions", headers=h,
                           json={"model": "moa:default", "stream": True,
                                 "messages": [{"role": "user", "content": "hi"}]}) as st:
             txt = b"".join(st.iter_bytes()).decode("utf-8", "ignore")
-        check("MOA 流式含 [DONE]", "data: [DONE]" in txt, txt[:100])
+        check("MOA stream has [DONE]", "data: [DONE]" in txt, txt[:100])
 
-        # 11f MOA 未知 pipeline -> 404
+        # 11f MOA unknown pipeline -> 404
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
                        json={"model": "moa:nope", "messages": [{"role": "user", "content": "hi"}]})
-        check("MOA 未知 pipeline 404", r.status_code == 404, str(r.status_code))
+        check("MOA unknown pipeline 404", r.status_code == 404, str(r.status_code))
 
-        # 12 embeddings 透传
+        # 12 embeddings passthrough
         r = httpx.post(f"{BASE}/embeddings", headers=h,
                        json={"model": "openai/text-embedding-3-small", "input": "hello"})
         check("embeddings 200", r.status_code == 200, str(r.status_code) + r.text[:120])
         if r.status_code == 200:
             d = r.json()
-            check("embeddings 结构", isinstance(d.get("data"), list) and "embedding" in d["data"][0])
+            check("embeddings shape", isinstance(d.get("data"), list) and "embedding" in d["data"][0])
 
-        # 13 全部 key 失败 -> 502（boom 模型恒 500）
+        # 13 all keys fail -> 502 (boom model always 500)
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
                        json={"model": "openai/boom", "messages": [{"role": "user", "content": "hi"}]})
-        check("全 key 失败 502", r.status_code == 502, str(r.status_code))
+        check("all keys fail 502", r.status_code == 502, str(r.status_code))
 
         # 14 admin health
         r = httpx.get(f"{ADMIN}/health", headers=h)
         check("admin health 200", r.status_code == 200)
         if r.status_code == 200:
             ok = {k: v.get("ok") for k, v in r.json().items()}
-            check("admin health 三家 ok", all(ok.values()), str(ok))
+            check("admin health all ok", all(ok.values()), str(ok))
 
-        # 14a admin 鉴权：master_key 非空时无 key 应 401
-        check("admin 无 key 401", httpx.get(f"{ADMIN}/config").status_code == 401)
+        # 14a admin auth: no key should 401 when master_key is non-empty
+        check("admin no-key 401", httpx.get(f"{ADMIN}/config").status_code == 401)
 
-        # 14b 配置编辑：PUT /admin/api/config 增加别名，热生效
+        # 14b config edit: PUT /admin/api/config adds alias, hot-reload
         raw = httpx.get(f"{ADMIN}/config/raw", headers=h).json()
         raw.setdefault("aliases", {})["extra"] = "openai/gpt-4o"
         r = httpx.put(f"{ADMIN}/config", headers=h, json=raw)
         check("PUT config 200", r.status_code == 200, str(r.status_code) + r.text[:120])
         ids2 = {x["id"] for x in httpx.get(f"{BASE}/models", headers=h).json()["data"]}
-        check("配置编辑热生效(新别名可见)", "extra" in ids2, str(ids2))
+        check("config edit hot-reload (new alias visible)", "extra" in ids2, str(ids2))
 
         # 15 admin summary
         r = httpx.get(f"{ADMIN}/usage/summary?days=1", headers=h)

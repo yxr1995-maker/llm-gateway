@@ -1,14 +1,14 @@
-"""管理 API：/admin/api/*
+"""Admin API: /admin/api/*
 
-依赖注入约定（main.py 装配）：
-    app.state.config      配置（dict 或可转 dict 的对象，见 config.example.yaml）
-    app.state.providers   Provider registry（可选，config 缺 providers 时兜底）
-    app.state.stats       StatsStore 实例（可能未初始化，接口需兜底返回空数据）
-    app.state.master_key  管理密钥；非空时所有 /admin/api/* 需 Bearer 鉴权
+Dependency-injection convention (wired in main.py):
+    app.state.config      config (a dict or dict-convertible object; see config.example.yaml)
+    app.state.providers   provider registry (optional; fallback when config has no providers)
+    app.state.stats       StatsStore instance (may be uninit; endpoints return empty data)
+    app.state.master_key  master key; when non-empty all /admin/api/* require Bearer auth
 
-挂载方式：router 同时注册了 "/api/*" 与 "/admin/api/*" 两组等价路径，
-因此 main.py 无论 `include_router(admin.router)` 还是
-`include_router(admin.router, prefix="/admin")`，/admin/api/* 都可用。
+Mounting: the router registers both "/api/*" and "/admin/api/*" as equivalent path sets,
+so main.py, whether `include_router(admin.router)` or
+`include_router(admin.router, prefix="/admin")`，/admin/api/* both work.
 """
 
 from __future__ import annotations
@@ -24,15 +24,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 router = APIRouter(include_in_schema=False)
 
 _MASK = "****"
-_HEALTH_TIMEOUT = 5.0   # 健康探测超时（秒）
-_TEST_TIMEOUT = 60.0    # 模型测试超时（秒）
+_HEALTH_TIMEOUT = 5.0   # health probe timeout (seconds)
+_TEST_TIMEOUT = 60.0    # model test timeout (seconds)
 
 
 # ----------------------------------------------------------------------
-# 工具函数
+# helpers
 # ----------------------------------------------------------------------
 def _mask_key(key: Any) -> str:
-    """脱敏：key 只显示前 6 位 + ****（不足 6 位整体打码）。"""
+    """Mask: show only the first 6 chars of a key + **** (fully masked if shorter than 6)."""
     s = str(key or "")
     if not s:
         return ""
@@ -40,7 +40,7 @@ def _mask_key(key: Any) -> str:
 
 
 def _to_plain(obj: Any) -> Any:
-    """把配置对象（dict / pydantic / 普通对象）递归转成纯 dict/list/标量。"""
+    """Recursively convert a config object (dict / pydantic / plain object) into pure dict/list/scalars."""
     if obj is None or isinstance(obj, (str, int, float, bool)):
         return obj
     if isinstance(obj, dict):
@@ -80,7 +80,7 @@ def _get_stats(request: Request):
 
 
 def _provider_items(request: Request, config: dict) -> list[tuple[str, dict]]:
-    """从 config（优先）或 app.state.providers（兜底）取 provider 配置列表。"""
+    """Get the provider config list from config (preferred) or app.state.providers (fallback)."""
     providers = config.get("providers")
     if isinstance(providers, dict) and providers:
         return [(str(name), p if isinstance(p, dict) else {}) for name, p in providers.items()]
@@ -89,7 +89,7 @@ def _provider_items(request: Request, config: dict) -> list[tuple[str, dict]]:
             (str(p.get("name", f"provider{i}")), p)
             for i, p in enumerate(providers) if isinstance(p, dict)
         ]
-    # 兜底：运行时的 provider registry（ProviderBase 实例）
+    # fallback: the runtime provider registry (ProviderBase instances)
     registry = getattr(request.app.state, "providers", None)
     items: list[tuple[str, dict]] = []
     if isinstance(registry, dict):
@@ -107,10 +107,10 @@ def _provider_items(request: Request, config: dict) -> list[tuple[str, dict]]:
 
 
 # ----------------------------------------------------------------------
-# 鉴权
+# auth
 # ----------------------------------------------------------------------
 async def require_auth(request: Request) -> None:
-    """master_key 非空时校验 Authorization: Bearer <master_key>。"""
+    """When master_key is non-empty, verify Authorization: Bearer <master_key>."""
     config = _get_config(request)
     master_key = _get_master_key(request, config)
     if not master_key:
@@ -120,12 +120,12 @@ async def require_auth(request: Request) -> None:
     if not token or not hmac.compare_digest(token.encode(), master_key.encode()):
         raise HTTPException(
             status_code=401,
-            detail={"error": {"message": "未授权：master key 缺失或错误", "type": "authentication_error"}},
+            detail={"error": {"message": "unauthorized: master key missing or wrong", "type": "authentication_error"}},
         )
 
 
 # ----------------------------------------------------------------------
-# 配置总览（脱敏）
+# Config overview (masked)
 # ----------------------------------------------------------------------
 def _build_masked_config(request: Request) -> dict:
     config = _get_config(request)
@@ -158,12 +158,12 @@ async def get_config(request: Request, _: None = Depends(require_auth)):
 
 
 async def get_config_raw(request: Request, _: None = Depends(require_auth)):
-    """未脱敏的完整配置（供管理页编辑用；受 require_auth 保护）。"""
+    """Full unmasked config (for the admin editor; protected by require_auth)."""
     return _to_plain(_get_config(request))
 
 
 def _apply_runtime(request: Request) -> None:
-    """配置保存后重建 providers / 密钥池 / master_key。"""
+    """Rebuild providers / key pool / master_key after saving config."""
     cfg = request.app.state.config
     from .providers import build_providers
     request.app.state.providers = build_providers(cfg.providers)
@@ -172,13 +172,13 @@ def _apply_runtime(request: Request) -> None:
 
 
 async def put_config(request: Request, _: None = Depends(require_auth)):
-    """保存整份配置（管理页编辑后调用）。"""
+    """Save the full config (called after admin edits)."""
     try:
         body = await request.json()
     except Exception:
-        raise HTTPException(status_code=400, detail={"error": {"message": "请求体需为 JSON", "type": "invalid_request_error"}})
+        raise HTTPException(status_code=400, detail={"error": {"message": "request body must be JSON", "type": "invalid_request_error"}})
     if not isinstance(body, dict):
-        raise HTTPException(status_code=400, detail={"error": {"message": "配置需为 JSON 对象", "type": "invalid_request_error"}})
+        raise HTTPException(status_code=400, detail={"error": {"message": "config must be a JSON object", "type": "invalid_request_error"}})
     body.setdefault("server", {})
     body.setdefault("providers", {})
     body.setdefault("aliases", {})
@@ -194,7 +194,7 @@ async def put_config(request: Request, _: None = Depends(require_auth)):
 
 
 # ----------------------------------------------------------------------
-# 用量统计（stats 未初始化时返回空数据，绝不 500）
+# usage stats (return empty data if stats is uninit; never 500)
 # ----------------------------------------------------------------------
 def _empty_summary(days: int) -> dict:
     return {
@@ -215,7 +215,7 @@ def _empty_summary(days: int) -> dict:
 
 async def usage_summary(
     request: Request,
-    days: int = Query(7, ge=1, le=365, description="统计最近 N 天"),
+    days: int = Query(7, ge=1, le=365, description="stats over the last N days"),
     _: None = Depends(require_auth),
 ):
     stats = _get_stats(request)
@@ -229,7 +229,7 @@ async def usage_summary(
 
 async def usage_recent(
     request: Request,
-    limit: int = Query(50, ge=1, le=1000, description="返回最近 N 条"),
+    limit: int = Query(50, ge=1, le=1000, description="return the last N rows"),
     _: None = Depends(require_auth),
 ):
     stats = _get_stats(request)
@@ -242,10 +242,10 @@ async def usage_recent(
 
 
 # ----------------------------------------------------------------------
-# 连通性探测
+# connectivity probe
 # ----------------------------------------------------------------------
 def _probe_target(ptype: str, base_url: str, key: str) -> tuple[str, dict]:
-    """按 provider 类型构造最小探测请求（GET /models 级别）。"""
+    """Build a minimal probe request (GET /models level) by provider type."""
     if ptype == "anthropic":
         headers = {"anthropic-version": "2023-06-01"}
         if key:
@@ -256,7 +256,7 @@ def _probe_target(ptype: str, base_url: str, key: str) -> tuple[str, dict]:
         if key:
             url += ("&" if "?" in url else "?") + "key=" + key
         return url, {}
-    # openai_like 及其他 OpenAI 兼容协议
+    # openai_like and other OpenAI-compatible protocols
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     return base_url + "/models", headers
 
@@ -267,7 +267,7 @@ async def _probe_one(client: httpx.AsyncClient, name: str, pconf: dict) -> tuple
     keys = pconf.get("keys") or []
     key = str(keys[0]) if keys else ""
     if not base_url:
-        return name, {"ok": False, "latency_ms": 0, "error": "未配置 base_url"}
+        return name, {"ok": False, "latency_ms": 0, "error": "base_url not configured"}
     url, headers = _probe_target(ptype, base_url, key)
     start = time.monotonic()
     try:
@@ -278,13 +278,13 @@ async def _probe_one(client: httpx.AsyncClient, name: str, pconf: dict) -> tuple
         if not ok:
             result["error"] = f"HTTP {resp.status_code}"
         return name, result
-    except Exception as exc:  # 超时/连接失败/DNS 等
+    except Exception as exc:  # timeout / connection failure / DNS etc.
         latency = int((time.monotonic() - start) * 1000)
         return name, {"ok": False, "latency_ms": latency, "error": f"{type(exc).__name__}: {exc}"}
 
 
 async def health(request: Request, _: None = Depends(require_auth)):
-    """逐个 provider 发最小探测请求（超时 5s），并发执行。"""
+    """Send a minimal probe request to each provider (5s timeout), concurrently."""
     config = _get_config(request)
     items = _provider_items(request, config)
     if not items:
@@ -295,7 +295,7 @@ async def health(request: Request, _: None = Depends(require_auth)):
 
 
 # ----------------------------------------------------------------------
-# 模型测试：走网关自身的 /v1/chat/completions（环回请求）
+# model test: goes through the gateway's own /v1/chat/completions (loopback)
 # ----------------------------------------------------------------------
 async def test_model(request: Request, _: None = Depends(require_auth)):
     try:
@@ -306,7 +306,7 @@ async def test_model(request: Request, _: None = Depends(require_auth)):
     if not model or not isinstance(model, str):
         raise HTTPException(
             status_code=400,
-            detail={"error": {"message": "请求体需为 JSON 且包含 model 字段", "type": "invalid_request_error"}},
+            detail={"error": {"message": "request body must be JSON and include a model field", "type": "invalid_request_error"}},
         )
 
     config = _get_config(request)
@@ -350,12 +350,12 @@ async def test_model(request: Request, _: None = Depends(require_auth)):
         data = resp.json()
         reply = data["choices"][0]["message"]["content"]
     except Exception:
-        return {"ok": False, "latency_ms": latency, "error": "响应解析失败: " + resp.text[:300]}
+        return {"ok": False, "latency_ms": latency, "error": "response parse failed: " + resp.text[:300]}
     return {"ok": True, "latency_ms": latency, "reply": reply}
 
 
 # ----------------------------------------------------------------------
-# 路由注册：同时挂 /api/* 与 /admin/api/*，兼容 include_router 是否加 prefix="/admin"
+# route registration: mount both /api/* and /admin/api/*, tolerating whether include_router adds prefix="/admin"
 # ----------------------------------------------------------------------
 for _prefix in ("", "/admin"):
     router.add_api_route(_prefix + "/api/config", get_config, methods=["GET"])

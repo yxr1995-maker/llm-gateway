@@ -1,20 +1,20 @@
 # =====================================================================
-# llm-gateway 示例配置
-# 使用方法：cp config.example.yaml config.yaml ，然后按需修改
-# 配置支持热重载：保存文件后自动生效，无需重启服务
+# llm-gateway example config
+# Usage: cp config.example.yaml config.yaml, then edit as needed
+# config hot-reloads: changes take effect on save, no restart needed
 # =====================================================================
 
 server:
-  host: 0.0.0.0                     # 监听地址，本机使用可改 127.0.0.1
-  port: 8080                        # 监听端口
-  master_key: "sk-local-xxxx"       # 调用网关 / 管理页所需的 Key；留空 "" 表示无需鉴权（仅限本机调试）
+  host: 0.0.0.0                     # listen address; for local use set 127.0.0.1
+  port: 8080                        # listen port
+  master_key: "sk-local-xxxx"       # key for calling the gateway / admin console; empty "" means no auth (local debugging only)
 
 # ---------------------------------------------------------------------
-# Provider 列表：每家服务商一个条目
-#   type:     openai_like（OpenAI 兼容协议）/ anthropic / gemini
-#   base_url: 上游 API 地址（常见地址见 README 速查表）
-#   keys:     密钥池，多个 key 轮询使用；某个 key 失败会自动故障转移
-#   models:   该 provider 对外可用的模型清单
+# Provider list：one entry per provider
+#   type:     openai_like (OpenAI-compatible protocol) / anthropic / gemini
+#   base_url: upstream API URL (see the README cheat sheet)
+#   keys:     key pool, round-robin; a failed key auto-fails-over
+#   models:   available models for this provider
 # ---------------------------------------------------------------------
 providers:
   # ---- OpenAI ----
@@ -23,30 +23,30 @@ providers:
     base_url: https://api.openai.com/v1
     keys: ["sk-xxxxxxxx", "sk-yyyyyyyy"]
     models: ["gpt-4o", "gpt-4o-mini"]
-    supports_responses: true   # 上游原生支持 /v1/responses 时设 true，走透传快路径
+    supports_responses: true   # set true when the upstream natively supports /v1/responses (passthrough fast path)
 
   # ---- Anthropic（Claude）----
   anthropic:
-    type: anthropic                 # Messages API，网关自动做 OpenAI 格式转换
+    type: anthropic                 # Messages API; the gateway auto-converts to OpenAI format
     base_url: https://api.anthropic.com
     keys: ["sk-ant-xxxxxxxx"]
     models: ["claude-sonnet-4-5", "claude-opus-4-1"]
 
   # ---- DeepSeek ----
   deepseek:
-    type: openai_like               # DeepSeek 使用 OpenAI 兼容协议
+    type: openai_like               # DeepSeek uses the OpenAI-compatible protocol
     base_url: https://api.deepseek.com/v1
     keys: ["sk-xxxxxxxx"]
     models: ["deepseek-chat", "deepseek-reasoner"]
 
   # ---- Google Gemini ----
   gemini:
-    type: gemini                    # Gemini 协议，网关自动做 OpenAI 格式转换
+    type: gemini                    # Gemini protocol; the gateway auto-converts to OpenAI format
     base_url: https://generativelanguage.googleapis.com/v1beta
     keys: ["AIzaSyxxxxxxxx"]
     models: ["gemini-2.5-pro", "gemini-2.5-flash"]
 
-  # ---- 其他 OpenAI 兼容服务照此添加（示例：Moonshot Kimi）----
+  # ---- add other OpenAI-compatible services likewise (example: Moonshot Kimi)----
   # moonshot:
   #   type: openai_like
   #   base_url: https://api.moonshot.cn/v1
@@ -54,8 +54,8 @@ providers:
   #   models: ["kimi-k2-0711-preview"]
 
 # ---------------------------------------------------------------------
-# 模型别名：客户端请求时用短别名即可，格式为  别名: provider/model
-# 例如 Codex 里 model 填 claude，就会路由到 anthropic/claude-sonnet-4-5
+# aliases: clients can use a short alias; format is  alias: provider/model
+# e.g. setting model to claude in Codex routes to anthropic/claude-sonnet-4-5
 # ---------------------------------------------------------------------
 aliases:
   gpt: openai/gpt-4o
@@ -64,8 +64,8 @@ aliases:
   gem: gemini/gemini-2.5-flash
 
 # ---------------------------------------------------------------------
-# Mixture-of-Agents（MOA）：多 proposer 并行 -> aggregator 综合
-# 请求时 model 填 moa:<name>（如 moa:default）即可触发；proposer 失败自动跳过
+# Mixture-of-Agents (MOA): multiple proposers in parallel -> aggregator synthesis
+# trigger by setting model to moa:<name> (e.g. moa:default); a failed proposer is auto-skipped
 # ---------------------------------------------------------------------
 moa:
   default:
@@ -77,10 +77,10 @@ moa:
     aggregator:
       provider: openai
       model: gpt-4o
-    # aggregator_prompt: "自定义综合提示（可选）"
+    # aggregator_prompt: "custom synthesis prompt (optional)"
 
 # ---------------------------------------------------------------------
-# 限流：按调用方 key + 模型的令牌桶限流（进程内存实现）
+# rate-limit: per (caller key + model) token-bucket limit (in-process)
 # ---------------------------------------------------------------------
 rate_limit:
-  requests_per_minute: 60           # 每分钟请求数；0 = 不限流
+  requests_per_minute: 60           # requests per minute; 0 = unlimited

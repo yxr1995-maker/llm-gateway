@@ -4,8 +4,8 @@
 <dict>
     <key>Label</key>
     <string>com.llm-gateway</string>
-    <!-- 注意：macOS TCC 会阻止 launchd 执行 ~/Documents、~/Desktop、~/Downloads
-         下的程序，请把仓库放在其他位置（如 ~/llm-gateway）并相应修改路径。 -->
+    <!-- Note: macOS TCC blocks launchd from executing programs under ~/Documents, ~/Desktop, ~/Downloads
+         place the repo elsewhere (e.g. ~/llm-gateway) and update the paths accordingly. -->
     <key>ProgramArguments</key>
     <array>
         <string>/Users/YOUR_NAME/llm-gateway/contrib/macos/run_gateway.sh</string>

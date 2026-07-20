@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LLM Gateway 管理台</title>
+<title>LLM Gateway Admin</title>
 <style>
   :root {
     --bg: #faf8f5; --card: #ffffff; --ink: #3a352f; --muted: #8b8177; --faint: #b5aca1;
@@ -73,81 +73,153 @@
 </head>
 <body>
 <div class="topbar">
-  <div class="brand">LLM <span>Gateway</span> 管理台</div>
+  <div class="brand">LLM <span>Gateway</span> <span data-i18n="admin_console"></span></div>
   <div class="top-actions">
-    <span id="auth-pill" class="pill">检测中…</span>
-    <button id="btn-refresh" class="btn ghost small">刷新</button>
+    <span id="auth-pill" class="pill" data-i18n="checking"></span>
+    <button id="btn-lang" class="btn ghost small">中文</button>
+    <button id="btn-refresh" class="btn ghost small" data-i18n="refresh"></button>
   </div>
 </div>
 
 <div id="authbar" class="authbar">
-  <span>鉴权已开启，请输入 Master Key 进入：</span>
+  <span data-i18n="auth_prompt"></span>
   <input id="auth-input" type="password" placeholder="master key">
-  <button id="auth-submit" class="btn small">进入</button>
+  <button id="auth-submit" class="btn small" data-i18n="enter"></button>
   <span id="auth-error" class="error-text"></span>
 </div>
 
 <main id="app">
   <div class="card">
-    <h2>配置编辑</h2>
-    <div class="desc">直接在控制台增删改 Provider / 模型 / 别名 / MOA / 限流 / 鉴权，保存后即时热生效（无需重启）。密钥仅存于本机 config.yaml。</div>
+    <h2 data-i18n="config_editor"></h2>
+    <div class="desc" data-i18n="config_editor_desc"></div>
     <div id="editor"></div>
   </div>
 
   <div class="card">
     <div class="section-head">
-      <h2>配置总览</h2>
-      <button id="btn-health" class="btn ghost small">健康检查</button>
+      <h2 data-i18n="overview"></h2>
+      <button id="btn-health" class="btn ghost small" data-i18n="health_check"></button>
     </div>
     <div id="server-info"></div>
     <h3 style="margin:16px 0 8px;font-size:13px;">Providers</h3>
     <div id="providers-wrap"></div>
-    <h3 style="margin:16px 0 8px;font-size:13px;">别名</h3>
+    <h3 style="margin:16px 0 8px;font-size:13px;" data-i18n="aliases"></h3>
     <div id="aliases-wrap"></div>
   </div>
 
   <div class="card">
     <div class="section-head">
-      <h2>用量仪表盘</h2>
+      <h2 data-i18n="usage_dashboard"></h2>
       <div class="seg" id="days-seg">
-        <button data-days="1">1天</button>
-        <button data-days="7" class="active">7天</button>
-        <button data-days="30">30天</button>
+        <button data-days="1">1d</button>
+        <button data-days="7" class="active">7d</button>
+        <button data-days="30">30d</button>
       </div>
     </div>
     <div id="usage-summary"></div>
-    <h3 style="margin:16px 0 8px;font-size:13px;">最近调用</h3>
+    <h3 style="margin:16px 0 8px;font-size:13px;" data-i18n="recent_calls"></h3>
     <div id="usage-recent"></div>
   </div>
 
   <div class="card">
-    <h2>模型测试</h2>
-    <div class="desc">通过网关自身向后端模型发送 “Say hi in one word”，验证链路是否可用</div>
+    <h2 data-i18n="model_test"></h2>
+    <div class="desc" data-i18n="model_test_desc"></div>
     <div class="row-inline" style="margin-bottom:10px;">
-      <select id="model-select" style="max-width:360px;"><option value="">加载中…</option></select>
-      <button id="btn-test" class="btn">发送测试</button>
+      <select id="model-select" style="max-width:360px;"><option value="" data-i18n="loading"></option></select>
+      <button id="btn-test" class="btn" data-i18n="send_test"></button>
     </div>
     <div id="test-result"></div>
   </div>
 </main>
 
-<footer>llm-gateway · 本地管理页 · 数据仅保存在本机</footer>
+<footer data-i18n="footer"></footer>
 <div id="toast" class="toast"></div>
 
 <script>
 (function () {
   "use strict";
   var LS_KEY = "llm_gateway_master_key";
+  var LS_LANG = "llm_gateway_lang";
+  var LANG = localStorage.getItem(LS_LANG) || "en";
   var masterKey = localStorage.getItem(LS_KEY) || "";
   var currentDays = 7;
-  var raw = null;  // 编辑中的完整配置（未脱敏）
+  var raw = null;
   var $ = function (s) { return document.querySelector(s); };
+
+  var I18N = {
+    en: {
+      admin_console: "Admin", checking: "Checking…", refresh: "Refresh", enter: "Enter",
+      auth_prompt: "Auth is on. Enter the master key to continue:", invalid_key: "Key invalid or expired, please re-enter",
+      config_editor: "Config Editor", config_editor_desc: "Add/edit/delete providers, models, aliases, MOA, rate limit and auth directly in the console. Changes hot-reload on save (no restart). Keys stay only in the local config.yaml.",
+      overview: "Overview", health_check: "Health Check", aliases: "Aliases",
+      usage_dashboard: "Usage Dashboard", recent_calls: "Recent Calls", model_test: "Model Test",
+      model_test_desc: "Sends \"Say hi in one word\" through the gateway to verify the model link.", loading: "Loading…",
+      send_test: "Send Test", footer: "llm-gateway · local admin console · data stays on this machine",
+      auth_on: "Auth on", auth_off: "No auth", no_auth: "unauthenticated", pick_model: "Please pick a model",
+      testing: "Testing…", save: "Save Config", saving: "Saving…", save_fail: "Save failed: ", saved: "Config saved and hot-reloaded",
+      auth_and_limit: "Auth & Rate Limit", auth_toggle_lbl: "Enable API auth (master_key); when off, both the console and /v1/* are unauthenticated (local only)",
+      master_key_lbl: "Master Key (empty = auto-generate)", rpm_lbl: "Rate limit: requests/min per caller key (0 = unlimited)",
+      add_provider: "+ Add Provider", add_alias: "+ Add Alias", add_pipeline: "+ Add Pipeline",
+      no_provider: "No provider configured", no_alias: "No alias configured",
+      no_moa: "No MOA pipeline configured (trigger with model moa:<name>)",
+      type: "Type", base_url: "Base URL", keys_per_line: "Keys (one per line)", models_per_line: "Models (one per line)",
+      supports_responses_lbl: "Upstream natively supports /v1/responses (passthrough fast path)",
+      delete: "Delete", del: "Del", add_proposer: "+ proposer", pick_provider: "(pick provider)", proposers: "Proposers",
+      agg_provider: "Aggregator Provider", agg_model: "Aggregator Model", agg_prompt: "Synthesis prompt (optional)",
+      listen: "Listen", master_key: "Master Key", no_key_set: "not set (no auth)", rate_limit: "Rate Limit",
+      per_min: " req/min/key", no_limit: "unlimited", not_checked: "not checked", ok_all: "all ok",
+      calls: "Calls", total_tokens: "Total Tokens", prompt: "Prompt", completion: "Completion",
+      avg_latency: "Avg Latency", success_rate: "Success Rate", by_model: "By Model",
+      col_model: "Model", col_count: "Calls", col_latency: "Latency", col_provider: "Provider",
+      col_time: "Time", col_status: "Status", col_stream: "Stream", no_records: "No calls yet",
+      yes: "yes", no: "no", reply: "Reply", fail: "Failed", no_models: "(no models available)",
+      enter_master_key: "Please enter the master key", health_fail: "Health check failed",
+      router: "Route", col_health: "Health", col_keypool: "Key pool"
+    },
+    zh: {
+      admin_console: "管理台", checking: "检测中…", refresh: "刷新", enter: "进入",
+      auth_prompt: "鉴权已开启，请输入 Master Key 进入：", invalid_key: "Key 无效或已失效，请重新输入",
+      config_editor: "配置编辑", config_editor_desc: "直接在控制台增删改 Provider / 模型 / 别名 / MOA / 限流 / 鉴权，保存即时热生效（无需重启）。密钥仅存于本机 config.yaml。",
+      overview: "配置总览", health_check: "健康检查", aliases: "别名",
+      usage_dashboard: "用量仪表盘", recent_calls: "最近调用", model_test: "模型测试",
+      model_test_desc: "通过网关自身向后端模型发送 “Say hi in one word”，验证链路是否可用。", loading: "加载中…",
+      send_test: "发送测试", footer: "llm-gateway · 本地管理页 · 数据仅保存在本机",
+      auth_on: "鉴权已开启", auth_off: "免鉴权", no_auth: "未认证", pick_model: "请选择模型",
+      testing: "测试中…", save: "保存配置", saving: "保存中…", save_fail: "保存失败：", saved: "配置已保存并热生效",
+      auth_and_limit: "鉴权与限流", auth_toggle_lbl: "开启 API 鉴权（master_key）；关闭后控制台与 /v1/* 均免认证（仅限本机）",
+      master_key_lbl: "Master Key（留空则自动生成）", rpm_lbl: "限流：每分钟请求数 / 调用方 key（0=不限）",
+      add_provider: "+ 添加 Provider", add_alias: "+ 添加别名", add_pipeline: "+ 添加流水线",
+      no_provider: "未配置 Provider", no_alias: "未配置别名",
+      no_moa: "未配置 MOA 流水线（model 填 moa:<name> 触发）",
+      type: "类型", base_url: "Base URL", keys_per_line: "密钥（每行一个）", models_per_line: "模型（每行一个）",
+      supports_responses_lbl: "上游原生支持 /v1/responses（透传快路径）",
+      delete: "删除", del: "删", add_proposer: "+ proposer", pick_provider: "(选 provider)", proposers: "Proposers",
+      agg_provider: "Aggregator Provider", agg_model: "Aggregator Model", agg_prompt: "综合提示（可选）",
+      listen: "监听", master_key: "Master Key", no_key_set: "未设置（免鉴权）", rate_limit: "限流",
+      per_min: " 次/分钟/key", no_limit: "不限流", not_checked: "未检测", ok_all: "三家 ok",
+      calls: "调用次数", total_tokens: "总 Token", prompt: "Prompt", completion: "Completion",
+      avg_latency: "平均延迟", success_rate: "成功率", by_model: "按模型",
+      col_model: "模型", col_count: "次数", col_latency: "延迟", col_provider: "Provider",
+      col_time: "时间", col_status: "状态", col_stream: "流式", no_records: "暂无调用记录",
+      yes: "是", no: "否", reply: "回复", fail: "失败", no_models: "(无可用模型)",
+      enter_master_key: "请输入 Master Key", health_fail: "健康检查失败",
+      router: "路由", col_health: "健康", col_keypool: "密钥池"
+    }
+  };
+  function t(k) { return (I18N[LANG] && I18N[LANG][k]) || I18N.en[k] || k; }
+  function applyStatic() {
+    document.querySelectorAll("[data-i18n]").forEach(function(el){
+      var k = el.getAttribute("data-i18n"); if (I18N.en[k]) el.textContent = t(k);
+    });
+    document.documentElement.lang = LANG;
+    $("#btn-lang").textContent = LANG === "en" ? "中文" : "EN";
+  }
 
   function esc(s) { return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
   function fmtNum(n) { n = Number(n)||0; if (n>=1e6) return (n/1e6).toFixed(1)+"M"; if (n>=1e3) return (n/1e3).toFixed(1)+"k"; return String(n); }
   function fmtTs(ts) { if (!ts) return "-"; var d=new Date(ts*1000), p=function(x){return String(x).padStart(2,"0");}; return (d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds()); }
   function fmtRate(r) { return (Number(r||0)*100).toFixed(1)+"%"; }
-  function toast(msg, err) { var t=$("#toast"); t.textContent=msg; t.className="toast show"+(err?" err":""); setTimeout(function(){t.className="toast";}, 2200); }
+  function toast(msg, err) { var tt=$("#toast"); tt.textContent=msg; tt.className="toast show"+(err?" err":""); setTimeout(function(){tt.className="toast";}, 2200); }
 
   function api(path, options) {
     options = options || {};
@@ -156,26 +228,30 @@
     if (options.json !== undefined) { headers["Content-Type"]="application/json"; options.body=JSON.stringify(options.json); delete options.json; }
     options.headers = headers;
     return fetch(path, options).then(function(resp){
-      if (resp.status === 401) { showAuthBar("Key 无效或已失效，请重新输入"); throw new Error("unauthorized"); }
-      if (!resp.ok) { return resp.text().then(function(t){ throw new Error("HTTP "+resp.status+": "+t.slice(0,200)); }); }
+      if (resp.status === 401) { showAuthBar(t("invalid_key")); throw new Error("unauthorized"); }
+      if (!resp.ok) { return resp.text().then(function(tx){ throw new Error("HTTP "+resp.status+": "+tx.slice(0,200)); }); }
       return resp.json();
     });
   }
 
   function showAuthBar(msg) {
     $("#authbar").style.display = "flex";
-    $("#auth-pill").textContent = "未认证"; $("#auth-pill").className = "pill warn";
+    $("#auth-pill").textContent = t("no_auth"); $("#auth-pill").className = "pill warn";
     $("#auth-error").textContent = msg || "";
     $("#auth-input").focus();
   }
   function setAuthPill(on) {
-    if (on) { $("#auth-pill").textContent = "鉴权已开启"; $("#auth-pill").className = "pill on"; }
-    else { $("#auth-pill").textContent = "免鉴权"; $("#auth-pill").className = "pill"; }
+    if (on) { $("#auth-pill").textContent = t("auth_on"); $("#auth-pill").className = "pill on"; }
+    else { $("#auth-pill").textContent = t("auth_off"); $("#auth-pill").className = "pill"; }
   }
 
+  $("#btn-lang").addEventListener("click", function(){
+    LANG = (LANG === "en") ? "zh" : "en"; localStorage.setItem(LS_LANG, LANG);
+    applyStatic(); if (raw) { renderEditor(); } loadOverview(); loadUsage();
+  });
   $("#auth-submit").addEventListener("click", function(){
     var v = $("#auth-input").value.trim();
-    if (!v) { $("#auth-error").textContent = "请输入 Master Key"; return; }
+    if (!v) { $("#auth-error").textContent = t("enter_master_key"); return; }
     masterKey = v; localStorage.setItem(LS_KEY, v);
     $("#authbar").style.display = "none"; $("#auth-input").value = "";
     init();
@@ -188,257 +264,143 @@
       raw = cfg;
       $("#authbar").style.display = "none";
       setAuthPill(!!(cfg.server && cfg.server.master_key));
-      renderEditor();
-      loadOverview();
-      loadUsage();
-    }).catch(function(){ /* 401 已触发 showAuthBar */ });
+      renderEditor(); loadOverview(); loadUsage();
+    }).catch(function(){});
   }
 
-  // ---------------- 配置编辑器 ----------------
-  function ensureSections() {
-    raw.server = raw.server || {};
-    raw.providers = raw.providers || {};
-    raw.aliases = raw.aliases || {};
-    raw.moa = raw.moa || {};
-    raw.rate_limit = raw.rate_limit || {};
-  }
+  function ensureSections() { raw.server=raw.server||{}; raw.providers=raw.providers||{}; raw.aliases=raw.aliases||{}; raw.moa=raw.moa||{}; raw.rate_limit=raw.rate_limit||{}; }
   function renderEditor() {
     ensureSections();
-    var s = raw.server || {}, rl = raw.rate_limit || {};
-    var authOn = !!s.master_key;
+    var s = raw.server || {}, rl = raw.rate_limit || {}, authOn = !!s.master_key;
     var html = '';
-
-    // 鉴权开关 + 限流
-    html += '<div class="subcard"><h3>鉴权与限流</h3>';
+    html += '<div class="subcard"><h3>'+t("auth_and_limit")+'</h3>';
     html += '<div class="row-inline" style="margin-bottom:10px;">';
     html += '<label class="switch"><input id="ed-auth" type="checkbox" '+(authOn?'checked':'')+'><span class="slider"></span></label>';
-    html += '<span>开启 API 鉴权（master_key）；关闭后控制台与 /v1/* 均免认证（仅限本机）</span></div>';
+    html += '<span>'+t("auth_toggle_lbl")+'</span></div>';
     html += '<div class="field" id="ed-key-wrap" '+(authOn?'':'style="display:none;"')+'>';
-    html += '<label>Master Key（留空则自动生成）</label>';
+    html += '<label>'+t("master_key_lbl")+'</label>';
     html += '<input id="ed-key" type="text" placeholder="sk-gw-..." value="'+esc(s.master_key||"")+'"></div>';
-    html += '<div class="field"><label>限流：每分钟请求数 / 调用方 key（0=不限）</label>';
+    html += '<div class="field"><label>'+t("rpm_lbl")+'</label>';
     html += '<input id="ed-rpm" type="number" value="'+esc(rl.requests_per_minute||0)+'"></div></div>';
 
-    // Providers
-    html += '<div class="subcard"><h3>Providers <button class="btn small" id="add-prov">+ 添加 Provider</button></h3>';
-    html += '<div id="prov-list"></div></div>';
-
-    // Aliases
-    html += '<div class="subcard"><h3>别名 <button class="btn small" id="add-alias">+ 添加别名</button></h3>';
-    html += '<div id="alias-list"></div></div>';
-
-    // MOA
-    html += '<div class="subcard"><h3>MOA 流水线 <button class="btn small" id="add-moa">+ 添加流水线</button></h3>';
-    html += '<div id="moa-list"></div></div>';
-
-    html += '<div class="row-inline" style="margin-top:6px;"><button class="btn" id="btn-save">保存配置</button>';
-    html += '<span class="error-text" id="save-msg"></span></div>';
-
+    html += '<div class="subcard"><h3>Providers <button class="btn small" id="add-prov">'+t("add_provider")+'</button></h3><div id="prov-list"></div></div>';
+    html += '<div class="subcard"><h3>'+t("aliases")+' <button class="btn small" id="add-alias">'+t("add_alias")+'</button></h3><div id="alias-list"></div></div>';
+    html += '<div class="subcard"><h3>MOA <button class="btn small" id="add-moa">'+t("add_pipeline")+'</button></h3><div id="moa-list"></div></div>';
+    html += '<div class="row-inline" style="margin-top:6px;"><button class="btn" id="btn-save">'+t("save")+'</button><span class="error-text" id="save-msg"></span></div>';
     $("#editor").innerHTML = html;
     renderProvList(); renderAliasList(); renderMoaList();
-
     $("#ed-auth").addEventListener("change", function(){ $("#ed-key-wrap").style.display = this.checked ? "" : "none"; });
     $("#add-prov").addEventListener("click", function(){ var n="provider_"+Date.now(); raw.providers[n]={type:"openai_like",base_url:"",keys:[],models:[],supports_responses:false}; renderProvList(); });
     $("#add-alias").addEventListener("click", function(){ var n="alias_"+Date.now(); raw.aliases[n]="provider/model"; renderAliasList(); });
     $("#add-moa").addEventListener("click", function(){ var n="pipeline_"+Date.now(); raw.moa[n]={proposers:[{provider:"",model:""}],aggregator:{provider:"",model:""}}; renderMoaList(); });
     $("#btn-save").addEventListener("click", saveConfig);
   }
-
   function provNames() { return Object.keys(raw.providers||{}); }
   function renderProvList() {
     var names = provNames();
-    if (!names.length) { $("#prov-list").innerHTML = '<div class="empty">未配置 Provider</div>'; return; }
+    if (!names.length) { $("#prov-list").innerHTML = '<div class="empty">'+t("no_provider")+'</div>'; return; }
     var h = '';
-    names.forEach(function(name){
-      var p = raw.providers[name] || {};
-      h += '<div class="subcard" data-prov="'+esc(name)+'">';
-      h += '<h3><input class="ed-pname" data-old="'+esc(name)+'" type="text" value="'+esc(name)+'" style="max-width:200px;display:inline-block;">';
-      h += '<button class="btn danger small ed-pdel">删除</button></h3>';
-      h += '<div class="grid2"><div class="field"><label>类型</label><select class="ed-ptype">'+['openai_like','anthropic','gemini'].map(function(t){return '<option '+((p.type||'openai_like')===t?'selected':'')+'>'+t+'</option>';}).join('')+'</select></div>';
-      h += '<div class="field"><label>Base URL</label><input class="ed-purl" type="text" value="'+esc(p.base_url||'')+'"></div></div>';
-      h += '<div class="field"><label>密钥（每行一个）</label><textarea class="ed-pkeys" rows="2">'+esc((p.keys||[]).join('\n'))+'</textarea></div>';
-      h += '<div class="field"><label>模型（每行一个）</label><textarea class="ed-pmodels" rows="2">'+esc((p.models||[]).join('\n'))+'</textarea></div>';
-      h += '<div class="row-inline"><label class="switch"><input class="ed-pres" type="checkbox" '+(p.supports_responses?'checked':'')+'><span class="slider"></span></label><span>上游原生支持 /v1/responses（透传快路径）</span></div>';
-      h += '</div>';
+    names.forEach(function(name){ var p = raw.providers[name] || {};
+      h += '<div class="subcard" data-prov="'+esc(name)+'"><h3><input class="ed-pname" data-old="'+esc(name)+'" type="text" value="'+esc(name)+'" style="max-width:200px;display:inline-block;"><button class="btn danger small ed-pdel">'+t("delete")+'</button></h3>';
+      h += '<div class="grid2"><div class="field"><label>'+t("type")+'</label><select class="ed-ptype">'+['openai_like','anthropic','gemini'].map(function(tt){return '<option '+((p.type||'openai_like')===tt?'selected':'')+'>'+tt+'</option>';}).join('')+'</select></div>';
+      h += '<div class="field"><label>'+t("base_url")+'</label><input class="ed-purl" type="text" value="'+esc(p.base_url||'')+'"></div></div>';
+      h += '<div class="field"><label>'+t("keys_per_line")+'</label><textarea class="ed-pkeys" rows="2">'+esc((p.keys||[]).join('\n'))+'</textarea></div>';
+      h += '<div class="field"><label>'+t("models_per_line")+'</label><textarea class="ed-pmodels" rows="2">'+esc((p.models||[]).join('\n'))+'</textarea></div>';
+      h += '<div class="row-inline"><label class="switch"><input class="ed-pres" type="checkbox" '+(p.supports_responses?'checked':'')+'><span class="slider"></span></label><span>'+t("supports_responses_lbl")+'</span></div></div>';
     });
     $("#prov-list").innerHTML = h;
   }
   function renderAliasList() {
     var names = Object.keys(raw.aliases||{});
-    if (!names.length) { $("#alias-list").innerHTML = '<div class="empty">未配置别名</div>'; return; }
+    if (!names.length) { $("#alias-list").innerHTML = '<div class="empty">'+t("no_alias")+'</div>'; return; }
     var h = '';
-    names.forEach(function(a){
-      h += '<div class="row-inline" data-alias="'+esc(a)+'" style="margin-bottom:6px;">';
-      h += '<input class="ed-aname" data-old="'+esc(a)+'" type="text" value="'+esc(a)+'" style="max-width:180px;">';
-      h += '<span>→</span>';
-      h += '<input class="ed-atarget" type="text" value="'+esc(raw.aliases[a]||'')+'" placeholder="provider/model">';
-      h += '<button class="btn danger small ed-adel">删除</button></div>';
-    });
+    names.forEach(function(a){ h += '<div class="row-inline" data-alias="'+esc(a)+'" style="margin-bottom:6px;"><input class="ed-aname" data-old="'+esc(a)+'" type="text" value="'+esc(a)+'" style="max-width:180px;"><span>-&gt;</span><input class="ed-atarget" type="text" value="'+esc(raw.aliases[a]||'')+'" placeholder="provider/model"><button class="btn danger small ed-adel">'+t("delete")+'</button></div>'; });
     $("#alias-list").innerHTML = h;
   }
   function renderMoaList() {
     var names = Object.keys(raw.moa||{});
-    if (!names.length) { $("#moa-list").innerHTML = '<div class="empty">未配置 MOA 流水线（model 填 moa:&lt;name&gt; 触发）</div>'; return; }
+    if (!names.length) { $("#moa-list").innerHTML = '<div class="empty">'+t("no_moa")+'</div>'; return; }
     var pn = provNames();
-    function provOpts(sel){ return '<option value="">(选 provider)</option>'+pn.map(function(n){return '<option '+(sel===n?'selected':'')+'>'+esc(n)+'</option>';}).join(''); }
+    function provOpts(sel){ return '<option value="">'+t("pick_provider")+'</option>'+pn.map(function(n){return '<option '+(sel===n?'selected':'')+'>'+esc(n)+'</option>';}).join(''); }
     var h = '';
-    names.forEach(function(n){
-      var m = raw.moa[n] || {};
-      h += '<div class="subcard" data-moa="'+esc(n)+'">';
-      h += '<h3><input class="ed-mname" data-old="'+esc(n)+'" type="text" value="'+esc(n)+'" style="max-width:200px;display:inline-block;">';
-      h += '<button class="btn danger small ed-mdel">删除</button></h3>';
-      h += '<div class="field"><label>Proposers</label><div class="ed-props">';
-      (m.proposers||[]).forEach(function(pr, i){
-        h += '<div class="row-inline" style="margin-bottom:4px;" data-pi="'+i+'">';
-        h += '<select class="ed-pprov">'+provOpts(pr.provider)+'</select>';
-        h += '<input class="ed-pmodel" type="text" value="'+esc(pr.model||'')+'" placeholder="model" style="max-width:220px;">';
-        h += '<button class="btn danger small ed-ppdel">删</button></div>';
-      });
-      h += '</div><button class="btn ghost small ed-ppadd">+ proposer</button></div>';
+    names.forEach(function(n){ var m = raw.moa[n] || {};
+      h += '<div class="subcard" data-moa="'+esc(n)+'"><h3><input class="ed-mname" data-old="'+esc(n)+'" type="text" value="'+esc(n)+'" style="max-width:200px;display:inline-block;"><button class="btn danger small ed-mdel">'+t("delete")+'</button></h3>';
+      h += '<div class="field"><label>'+t("proposers")+'</label><div class="ed-props">';
+      (m.proposers||[]).forEach(function(pr, i){ h += '<div class="row-inline" style="margin-bottom:4px;" data-pi="'+i+'"><select class="ed-pprov">'+provOpts(pr.provider)+'</select><input class="ed-pmodel" type="text" value="'+esc(pr.model||'')+'" placeholder="model" style="max-width:220px;"><button class="btn danger small ed-ppdel">'+t("del")+'</button></div>'; });
+      h += '</div><button class="btn ghost small ed-ppadd">'+t("add_proposer")+'</button></div>';
       var ag = m.aggregator || {};
-      h += '<div class="grid2"><div class="field"><label>Aggregator Provider</label><select class="ed-agprov">'+provOpts(ag.provider)+'</select></div>';
-      h += '<div class="field"><label>Aggregator Model</label><input class="ed-agmodel" type="text" value="'+esc(ag.model||'')+'"></div></div>';
-      h += '<div class="field"><label>综合提示（可选）</label><textarea class="ed-agprompt" rows="2">'+esc(m.aggregator_prompt||'')+'</textarea></div>';
-      h += '</div>';
+      h += '<div class="grid2"><div class="field"><label>'+t("agg_provider")+'</label><select class="ed-agprov">'+provOpts(ag.provider)+'</select></div><div class="field"><label>'+t("agg_model")+'</label><input class="ed-agmodel" type="text" value="'+esc(ag.model||'')+'"></div></div>';
+      h += '<div class="field"><label>'+t("agg_prompt")+'</label><textarea class="ed-agprompt" rows="2">'+esc(m.aggregator_prompt||'')+'</textarea></div></div>';
     });
     $("#moa-list").innerHTML = h;
   }
-
   function saveConfig() {
-    // 收集 server
     var authOn = $("#ed-auth").checked;
     var key = $("#ed-key").value.trim();
     if (authOn && !key) { key = "sk-gw-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2); }
     raw.server.master_key = authOn ? key : "";
     raw.rate_limit.requests_per_minute = parseInt($("#ed-rpm").value, 10) || 0;
-
-    // 收集 providers
     var provs = {};
-    document.querySelectorAll("#prov-list .subcard").forEach(function(el){
-      var name = el.querySelector(".ed-pname").value.trim();
-      if (!name) return;
-      provs[name] = {
-        type: el.querySelector(".ed-ptype").value,
-        base_url: el.querySelector(".ed-purl").value.trim(),
-        keys: el.querySelector(".ed-pkeys").value.split("\n").map(function(s){return s.trim();}).filter(Boolean),
-        models: el.querySelector(".ed-pmodels").value.split("\n").map(function(s){return s.trim();}).filter(Boolean),
-        supports_responses: el.querySelector(".ed-pres").checked
-      };
-    });
+    document.querySelectorAll("#prov-list .subcard").forEach(function(el){ var name = el.querySelector(".ed-pname").value.trim(); if (!name) return; provs[name] = { type: el.querySelector(".ed-ptype").value, base_url: el.querySelector(".ed-purl").value.trim(), keys: el.querySelector(".ed-pkeys").value.split("\n").map(function(s){return s.trim();}).filter(Boolean), models: el.querySelector(".ed-pmodels").value.split("\n").map(function(s){return s.trim();}).filter(Boolean), supports_responses: el.querySelector(".ed-pres").checked }; });
     raw.providers = provs;
-
-    // aliases
     var al = {};
-    document.querySelectorAll("#alias-list .row-inline").forEach(function(el){
-      var a = el.querySelector(".ed-aname").value.trim();
-      var t = el.querySelector(".ed-atarget").value.trim();
-      if (a && t) al[a] = t;
-    });
+    document.querySelectorAll("#alias-list .row-inline").forEach(function(el){ var a = el.querySelector(".ed-aname").value.trim(), tv = el.querySelector(".ed-atarget").value.trim(); if (a && tv) al[a] = tv; });
     raw.aliases = al;
-
-    // moa
     var moa = {};
-    document.querySelectorAll("#moa-list .subcard").forEach(function(el){
-      var n = el.querySelector(".ed-mname").value.trim();
-      if (!n) return;
-      var props = [];
-      el.querySelectorAll(".ed-props .row-inline").forEach(function(p){
-        var pv = p.querySelector(".ed-pprov").value, mv = p.querySelector(".ed-pmodel").value.trim();
-        if (pv && mv) props.push({provider:pv, model:mv});
-      });
-      var ag = {provider: el.querySelector(".ed-agprov").value, model: el.querySelector(".ed-agmodel").value.trim()};
-      var entry = {proposers: props, aggregator: ag};
-      var ap = el.querySelector(".ed-agprompt").value;
-      if (ap && ap.trim()) entry.aggregator_prompt = ap.trim();
-      moa[n] = entry;
-    });
+    document.querySelectorAll("#moa-list .subcard").forEach(function(el){ var n = el.querySelector(".ed-mname").value.trim(); if (!n) return; var props = []; el.querySelectorAll(".ed-props .row-inline").forEach(function(p){ var pv = p.querySelector(".ed-pprov").value, mv = p.querySelector(".ed-pmodel").value.trim(); if (pv && mv) props.push({provider:pv, model:mv}); }); var entry = {proposers: props, aggregator: {provider: el.querySelector(".ed-agprov").value, model: el.querySelector(".ed-agmodel").value.trim()}}; var ap = el.querySelector(".ed-agprompt").value; if (ap && ap.trim()) entry.aggregator_prompt = ap.trim(); moa[n] = entry; });
     raw.moa = moa;
-
-    $("#save-msg").textContent = "保存中…";
+    $("#save-msg").textContent = t("saving");
     api("/admin/api/config", {method:"PUT", json: raw}).then(function(){
-      // 同步本地鉴权状态
-      if (authOn) { masterKey = key; localStorage.setItem(LS_KEY, key); }
-      else { masterKey = ""; localStorage.removeItem(LS_KEY); }
-      setAuthPill(authOn);
-      $("#save-msg").textContent = "";
-      toast("配置已保存并热生效");
-      init();
-    }).catch(function(e){ $("#save-msg").textContent = "保存失败：" + e.message; toast("保存失败", true); });
+      if (authOn) { masterKey = key; localStorage.setItem(LS_KEY, key); } else { masterKey = ""; localStorage.removeItem(LS_KEY); }
+      setAuthPill(authOn); $("#save-msg").textContent = ""; toast(t("saved")); init();
+    }).catch(function(e){ $("#save-msg").textContent = t("save_fail") + e.message; toast(t("save_fail"), true); });
   }
 
-  // ---------------- 总览（脱敏） ----------------
   function loadOverview() { api("/admin/api/config").then(renderOverview).catch(function(){}); }
   function renderOverview(cfg) {
     var s = cfg.server || {}, rl = cfg.rate_limit || {};
-    $("#server-info").innerHTML = '<table><tbody>' +
-      "<tr><th style='width:110px;'>监听</th><td class='mono'>"+esc(s.host||"-")+":"+esc(s.port||"-")+"</td></tr>" +
-      "<tr><th>Master Key</th><td class='mono'>"+(s.master_key?esc(s.master_key):'<span class="error-text">未设置（免鉴权）</span>')+"</td></tr>" +
-      "<tr><th>限流</th><td>"+(rl.requests_per_minute?esc(rl.requests_per_minute)+" 次/分钟/key":"不限流")+"</td></tr></tbody></table>";
+    $("#server-info").innerHTML = '<table><tbody><tr><th style="width:110px;">'+t("listen")+'</th><td class="mono">'+esc(s.host||"-")+":"+esc(s.port||"-")+'</td></tr><tr><th>'+t("master_key")+'</th><td class="mono">'+(s.master_key?esc(s.master_key):'<span class="error-text">'+t("no_key_set")+'</span>')+'</td></tr><tr><th>'+t("rate_limit")+'</th><td>'+(rl.requests_per_minute?esc(rl.requests_per_minute)+t("per_min"):t("no_limit"))+'</td></tr></tbody></table>';
     var provs = cfg.providers || {}, names = Object.keys(provs);
-    if (!names.length) { $("#providers-wrap").innerHTML = '<div class="empty">未配置 Provider</div>'; }
-    else {
-      var ph='<table><thead><tr><th>Provider</th><th>类型</th><th>Base URL</th><th>密钥池</th><th>模型</th><th>健康</th></tr></thead><tbody>';
-      names.forEach(function(n){ var p=provs[n]||{};
-        var keys=(p.keys||[]).map(function(k){return '<span class="chip gray mono">'+esc(k)+'</span>';}).join("");
-        var models=(p.models||[]).map(function(m){return '<span class="chip">'+esc(m)+'</span>';}).join("");
-        ph+="<tr><td><strong>"+esc(n)+"</strong></td><td>"+esc(p.type||"-")+"</td><td class='mono'>"+esc(p.base_url||"-")+"</td><td>"+(keys||"-")+"</td><td>"+(models||"-")+"</td><td data-health='"+esc(n)+"'><span class='dot unknown'></span><span style='color:var(--muted);font-size:12px;'>未检测</span></td></tr>";
-      });
-      $("#providers-wrap").innerHTML = ph+"</tbody></table>";
-    }
+    if (!names.length) { $("#providers-wrap").innerHTML = '<div class="empty">'+t("no_provider")+'</div>'; }
+    else { var ph='<table><thead><tr><th>Provider</th><th>'+t("type")+'</th><th>'+t("base_url")+'</th><th>'+t("col_keypool")+'</th><th>'+t("col_model")+'</th><th>'+t("col_health")+'</th></tr></thead><tbody>';
+      names.forEach(function(n){ var p=provs[n]||{}; var keys=(p.keys||[]).map(function(k){return '<span class="chip gray mono">'+esc(k)+'</span>';}).join(""); var models=(p.models||[]).map(function(m){return '<span class="chip">'+esc(m)+'</span>';}).join("");
+        ph+="<tr><td><strong>"+esc(n)+"</strong></td><td>"+esc(p.type||"-")+"</td><td class='mono'>"+esc(p.base_url||"-")+"</td><td>"+(keys||"-")+"</td><td>"+(models||"-")+"</td><td data-health='"+esc(n)+"'><span class='dot unknown'></span><span style='color:var(--muted);font-size:12px;'>"+t("not_checked")+"</span></td></tr>"; });
+      $("#providers-wrap").innerHTML = ph+"</tbody></table>"; }
     var al=cfg.aliases||{}, an=Object.keys(al);
-    if (!an.length) { $("#aliases-wrap").innerHTML='<div class="empty">未配置别名</div>'; }
-    else { var ah='<table><thead><tr><th>别名</th><th>路由</th></tr></thead><tbody>'; an.forEach(function(a){ ah+='<tr><td class="mono"><strong>'+esc(a)+'</strong></td><td class="mono">'+esc(al[a])+'</td></tr>'; }); $("#aliases-wrap").innerHTML=ah+"</tbody></table>"; }
-    // model select
+    if (!an.length) { $("#aliases-wrap").innerHTML='<div class="empty">'+t("no_alias")+'</div>'; }
+    else { var ah='<table><thead><tr><th>'+t("aliases")+'</th><th>'+t("router")+'</th></tr></thead><tbody>'; an.forEach(function(a){ ah+='<tr><td class="mono"><strong>'+esc(a)+'</strong></td><td class="mono">'+esc(al[a])+'</td></tr>'; }); $("#aliases-wrap").innerHTML=ah+"</tbody></table>"; }
     var sel=$("#model-select"), html="";
-    if (an.length){ html+='<optgroup label="别名">'; an.forEach(function(a){html+='<option value="'+esc(a)+'">'+esc(a)+" → "+esc(al[a])+'</option>';}); html+='</optgroup>'; }
+    if (an.length){ html+='<optgroup label="'+t("aliases")+'">'; an.forEach(function(a){html+='<option value="'+esc(a)+'">'+esc(a)+" -> "+esc(al[a])+'</option>';}); html+='</optgroup>'; }
     Object.keys(provs).forEach(function(n){ var ms=(provs[n]||{}).models||[]; if(!ms.length)return; html+='<optgroup label="Provider: '+esc(n)+'">'; ms.forEach(function(m){html+='<option value="'+esc(m)+'">'+esc(n)+" / "+esc(m)+'</option>';}); html+='</optgroup>'; });
-    sel.innerHTML = html || '<option value="">(无可用模型)</option>';
+    sel.innerHTML = html || '<option value="">'+t("no_models")+'</option>';
   }
-
   $("#btn-health").addEventListener("click", function(){
-    api("/admin/api/health").then(function(res){
-      Object.keys(res).forEach(function(n){
-        var cell = document.querySelector('td[data-health="'+esc(n)+'"]'); if(!cell) return;
-        var r=res[n]; cell.innerHTML='<span class="dot '+(r.ok?'ok':'bad')+'"></span><span style="font-size:12px;">'+(r.ok?r.latency_ms+'ms':esc(r.error||'失败'))+'</span>';
-      });
-    }).catch(function(e){ toast("健康检查失败", true); });
+    api("/admin/api/health").then(function(res){ Object.keys(res).forEach(function(n){ var cell = document.querySelector('td[data-health="'+esc(n)+'"]'); if(!cell) return; var r=res[n]; cell.innerHTML='<span class="dot '+(r.ok?'ok':'bad')+'"></span><span style="font-size:12px;">'+(r.ok?r.latency_ms+'ms':esc(r.error||'fail'))+'</span>'; }); }).catch(function(){ toast(t("health_fail"), true); });
   });
 
-  // ---------------- 用量 ----------------
   function loadUsage() { api("/admin/api/usage/summary?days="+currentDays).then(renderUsage); api("/admin/api/usage/recent").then(renderRecent); }
   function renderUsage(d) {
-    var t=d.totals||{};
-    $("#usage-summary").innerHTML = '<table><tbody>' +
-      '<tr><th>调用次数</th><td>'+fmtNum(t.calls)+'</td><th>总 Token</th><td>'+fmtNum(t.total_tokens)+'</td></tr>' +
-      '<tr><th>Prompt</th><td>'+fmtNum(t.prompt_tokens)+'</td><th>Completion</th><td>'+fmtNum(t.completion_tokens)+'</td></tr>' +
-      '<tr><th>平均延迟</th><td>'+fmtNum(t.avg_latency_ms)+' ms</td><th>成功率</th><td>'+fmtRate(t.success_rate)+'</td></tr>' +
-      '</tbody></table>';
+    var tt=d.totals||{};
+    $("#usage-summary").innerHTML = '<table><tbody><tr><th>'+t("calls")+'</th><td>'+fmtNum(tt.calls)+'</td><th>'+t("total_tokens")+'</th><td>'+fmtNum(tt.total_tokens)+'</td></tr><tr><th>'+t("prompt")+'</th><td>'+fmtNum(tt.prompt_tokens)+'</td><th>'+t("completion")+'</th><td>'+fmtNum(tt.completion_tokens)+'</td></tr><tr><th>'+t("avg_latency")+'</th><td>'+fmtNum(tt.avg_latency_ms)+' ms</td><th>'+t("success_rate")+'</th><td>'+fmtRate(tt.success_rate)+'</td></tr></tbody></table>';
     var by=d.by_model||[];
-    if (by.length) {
-      var h='<h3 style="margin:12px 0 8px;font-size:13px;">按模型</h3><table><thead><tr><th>模型</th><th>次数</th><th>Token</th><th>延迟</th><th>成功率</th></tr></thead><tbody>';
-      by.forEach(function(m){ h+='<tr><td class="mono">'+esc(m.model)+'</td><td>'+fmtNum(m.calls)+'</td><td>'+fmtNum(m.total_tokens)+'</td><td>'+fmtNum(m.avg_latency_ms)+'ms</td><td>'+fmtRate(m.success_rate)+'</td></tr>'; });
-      $("#usage-summary").innerHTML += h+'</tbody></table>';
-    }
+    if (by.length) { var h='<h3 style="margin:12px 0 8px;font-size:13px;">'+t("by_model")+'</h3><table><thead><tr><th>'+t("col_model")+'</th><th>'+t("col_count")+'</th><th>'+t("total_tokens")+'</th><th>'+t("col_latency")+'</th><th>'+t("success_rate")+'</th></tr></thead><tbody>'; by.forEach(function(m){ h+='<tr><td class="mono">'+esc(m.model)+'</td><td>'+fmtNum(m.calls)+'</td><td>'+fmtNum(m.total_tokens)+'</td><td>'+fmtNum(m.avg_latency_ms)+'ms</td><td>'+fmtRate(m.success_rate)+'</td></tr>'; }); $("#usage-summary").innerHTML += h+'</tbody></table>'; }
   }
   function renderRecent(rows) {
     rows = rows.rows||rows||[];
-    if (!rows.length) { $("#usage-recent").innerHTML='<div class="empty">暂无调用记录</div>'; return; }
-    var h='<table><thead><tr><th>时间</th><th>模型</th><th>Provider</th><th>Token</th><th>延迟</th><th>状态</th><th>流式</th></tr></thead><tbody>';
-    rows.slice(0,50).forEach(function(r){ h+='<tr><td>'+fmtTs(r.ts)+'</td><td class="mono">'+esc(r.model)+'</td><td>'+esc(r.provider)+'</td><td>'+fmtNum(r.total_tokens)+'</td><td>'+fmtNum(r.latency_ms)+'ms</td><td>'+(r.status>=200&&r.status<300?'<span class="dot ok"></span>'+r.status:'<span class="dot bad"></span>'+r.status)+'</td><td>'+(r.stream?'是':'否')+'</td></tr>'; });
+    if (!rows.length) { $("#usage-recent").innerHTML='<div class="empty">'+t("no_records")+'</div>'; return; }
+    var h='<table><thead><tr><th>'+t("col_time")+'</th><th>'+t("col_model")+'</th><th>'+t("col_provider")+'</th><th>'+t("total_tokens")+'</th><th>'+t("col_latency")+'</th><th>'+t("col_status")+'</th><th>'+t("col_stream")+'</th></tr></thead><tbody>';
+    rows.slice(0,50).forEach(function(r){ h+='<tr><td>'+fmtTs(r.ts)+'</td><td class="mono">'+esc(r.model)+'</td><td>'+esc(r.provider)+'</td><td>'+fmtNum(r.total_tokens)+'</td><td>'+fmtNum(r.latency_ms)+'ms</td><td>'+(r.status>=200&&r.status<300?'<span class="dot ok"></span>'+r.status:'<span class="dot bad"></span>'+r.status)+'</td><td>'+(r.stream?t("yes"):t("no"))+'</td></tr>'; });
     $("#usage-recent").innerHTML=h+'</tbody></table>';
   }
   document.querySelectorAll("#days-seg button").forEach(function(b){ b.addEventListener("click", function(){ document.querySelectorAll("#days-seg button").forEach(function(x){x.classList.remove("active");}); b.classList.add("active"); currentDays=parseInt(b.dataset.days,10); loadUsage(); }); });
 
-  // ---------------- 模型测试 ----------------
   $("#btn-test").addEventListener("click", function(){
-    var m=$("#model-select").value; if(!m){ toast("请选择模型", true); return; }
-    $("#test-result").innerHTML='<span class="error-text">测试中…</span>';
-    api("/admin/api/test", {method:"POST", json:{model:m}}).then(function(r){
-      if (r.ok) $("#test-result").innerHTML='<span class="dot ok"></span> '+r.latency_ms+'ms · 回复：'+esc(r.reply);
-      else $("#test-result").innerHTML='<span class="dot bad"></span> 失败：'+esc(r.error);
-    }).catch(function(e){ $("#test-result").innerHTML='<span class="dot bad"></span> '+esc(e.message); });
+    var m=$("#model-select").value; if(!m){ toast(t("pick_model"), true); return; }
+    $("#test-result").innerHTML='<span class="error-text">'+t("testing")+'</span>';
+    api("/admin/api/test", {method:"POST", json:{model:m}}).then(function(r){ if (r.ok) $("#test-result").innerHTML='<span class="dot ok"></span> '+r.latency_ms+'ms · '+t("reply")+': '+esc(r.reply); else $("#test-result").innerHTML='<span class="dot bad"></span> '+t("fail")+': '+esc(r.error); }).catch(function(e){ $("#test-result").innerHTML='<span class="dot bad"></span> '+esc(e.message); });
   });
 
+  applyStatic();
   init();
 })();
 </script>
