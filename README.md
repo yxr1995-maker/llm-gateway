@@ -11,6 +11,9 @@
 - **OpenAI 兼容**：`POST /v1/chat/completions`（含 SSE 流式）、`GET /v1/models`
 - **Responses 透传**：`POST /v1/responses`（含流式），让只说 Responses API 的客户端（如新版 Codex CLI）也能走网关；仅 openai_like 上游支持
 - **Embeddings 透传**：`POST /v1/embeddings`，向量接口同样享受密钥池与统计
+- **Anthropic Messages 输入**：`POST /v1/messages`，只说 Anthropic 协议的客户端也能聚合到任意上游
+- **MOA 混合智能体**：配置多个 proposer 并行作答 + aggregator 综合，`model` 填 `moa:<name>` 触发
+- **工具韧性**：自动修复非法 tool_call JSON、流式中途上游异常或提前断开时合成合法收尾（`[DONE]`/`completed`），避免客户端会话因断流中断
 - **Responses API 透传**：`POST /v1/responses`（含 SSE 流式），供 Codex 等
   Responses-only 客户端使用；仅 `openai_like` provider 且上游原生支持
   Responses 协议时可用（如火山 Ark / agnes），不支持的 provider 返回 501
@@ -96,7 +99,39 @@ codex --model claude                    # model 直接填别名
 
 model 可填 `aliases` 中的任意别名（如 `claude`、`ds`、`gem`），也可用 `provider/model` 全称（如 `deepseek/deepseek-reasoner`）。切换模型只改别名即可，无需再管各家不同的 base_url 与 key。
 
-## 管理页
+## 多协议统一路由
+
+网关以 **Responses 为统一枢纽**，三种输入面任选其一，均可到达任意上游：
+
+| 输入端点 | 输入格式 | 内部路径 |
+| --- | --- | --- |
+| `POST /v1/chat/completions` | OpenAI Chat | 直达（各家 chat↔原生转换已内置） |
+| `POST /v1/responses` | OpenAI Responses | 上游原生支持则透传；否则 responses→chat→原生→chat→responses |
+| `POST /v1/messages` | Anthropic Messages | anthropic→chat→原生→chat→anthropic |
+
+`supports_responses: true`（per-provider）标记上游原生支持 Responses，走透传快路径；其余上游自动经 chat 桥接转换。流式同样跨协议转换。
+
+## Mixture-of-Agents（MOA）
+
+在 `config.yaml` 定义流水线：
+
+```yaml
+moa:
+  default:
+    proposers:
+      - provider: openai
+        model: gpt-4o
+      - provider: anthropic
+        model: claude-sonnet-4-5
+    aggregator:
+      provider: openai
+      model: gpt-4o
+    # aggregator_prompt: "自定义综合提示（可选）"
+```
+
+请求时 `model` 填 `moa:default`（或 `moa/default`）即可：proposer 并行作答 → aggregator 综合 → 返回。三种输入面都支持（`/v1/chat/completions`、`/v1/responses`、`/v1/messages`），流式会输出 aggregator 的综合过程。单个 proposer 失败会记为注记并继续，不影响整体。
+
+## ## 管理页
 
 浏览器打开 `http://127.0.0.1:8080/static/admin.html`（或根路径）：
 

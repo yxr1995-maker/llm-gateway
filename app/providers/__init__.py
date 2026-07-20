@@ -69,6 +69,7 @@ class ProviderBase:
         # create_provider 可根据 provider 配置覆盖超时与模型列表
         self.timeout: float = DEFAULT_TIMEOUT
         self.models: list[str] = []
+        self.supports_responses: bool = False  # 上游是否原生支持 /v1/responses
 
     async def chat_completions(
         self, model: str, body: dict, api_key: str, stream: bool
@@ -100,6 +101,7 @@ def create_provider(name: str, cfg: dict) -> ProviderBase:
         raise ValueError(f"未知 provider 类型: {type_name!r} (provider={name!r})")
     provider = cls(name=name, base_url=cfg.get("base_url") or "", keys=cfg.get("keys") or [])
     provider.models = list(cfg.get("models") or [])
+    provider.supports_responses = bool(cfg.get("supports_responses"))
     if cfg.get("timeout"):
         try:
             provider.timeout = float(cfg["timeout"])

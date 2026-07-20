@@ -23,6 +23,7 @@ providers:
     base_url: https://api.openai.com/v1
     keys: ["sk-xxxxxxxx", "sk-yyyyyyyy"]
     models: ["gpt-4o", "gpt-4o-mini"]
+    supports_responses: true   # 上游原生支持 /v1/responses 时设 true，走透传快路径
 
   # ---- Anthropic（Claude）----
   anthropic:
@@ -61,6 +62,22 @@ aliases:
   claude: anthropic/claude-sonnet-4-5
   ds: deepseek/deepseek-chat
   gem: gemini/gemini-2.5-flash
+
+# ---------------------------------------------------------------------
+# Mixture-of-Agents（MOA）：多 proposer 并行 -> aggregator 综合
+# 请求时 model 填 moa:<name>（如 moa:default）即可触发；proposer 失败自动跳过
+# ---------------------------------------------------------------------
+moa:
+  default:
+    proposers:
+      - provider: openai
+        model: gpt-4o
+      - provider: anthropic
+        model: claude-sonnet-4-5
+    aggregator:
+      provider: openai
+      model: gpt-4o
+    # aggregator_prompt: "自定义综合提示（可选）"
 
 # ---------------------------------------------------------------------
 # 限流：按调用方 key + 模型的令牌桶限流（进程内存实现）

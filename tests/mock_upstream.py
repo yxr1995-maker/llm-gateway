@@ -154,6 +154,35 @@ class Handler(BaseHTTPRequestHandler):
         key = auth[7:] if auth.startswith("Bearer ") else ""
         if "boom" in str(body.get("model", "")):
             return self._send_json(500, {"error": {"message": "model boom always fails"}})
+        if "tool-bad" in str(body.get("model", "")):
+            # 故意返回非法 arguments，用于验证网关工具修复
+            bad = {"id": "chatcmpl-bad", "object": "chat.completion", "created": int(time.time()),
+                   "model": body.get("model", "?"),
+                   "choices": [{"index": 0, "message": {"role": "assistant", "content": None,
+                       "tool_calls": [{"id": "", "type": "function",
+                                       "function": {"name": "do_it", "arguments": "not json {"}}]},
+                       "finish_reason": "tool_calls"}],
+                   "usage": {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7}}
+            if not stream:
+                return self._send_json(200, bad)
+            cid, created = "chatcmpl-bad", int(time.time())
+            events = [openai_chunk(cid, created, body.get("model","?"), {"role": "assistant"})]
+            events.append(openai_chunk(cid, created, body.get("model","?"),
+                {"tool_calls": [{"index": 0, "id": "", "type": "function",
+                                 "function": {"name": "do_it", "arguments": "not json {"}}]}))
+            events += [openai_chunk(cid, created, body.get("model","?"), {}, "tool_calls"), b"data: [DONE]\n\n"]
+            return self._send_sse(events)
+        if "stream-break" in str(body.get("model", "")) and stream:
+            # 流式：发一个 chunk 后模拟上游中断
+            cid, created = "chatcmpl-brk", int(time.time())
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(openai_chunk(cid, created, body.get("model","?"), {"content": "par"}))
+            self.wfile.flush()
+            raise ConnectionError("模拟上游中断")
         if key in BAD_KEYS:
             return self._send_json(500, {"error": {"message": f"key {key} exploded",
                                                    "type": "server_error"}})

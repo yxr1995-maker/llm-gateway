@@ -60,6 +60,7 @@ providers:
     base_url: http://127.0.0.1:{MOCK_PORT}/v1
     keys: ["sk-fake1", "sk-good1"]
     models: ["gpt-4o", "text-embedding-3-small"]
+    supports_responses: true
   anthropic:
     type: anthropic
     base_url: http://127.0.0.1:{MOCK_PORT}
@@ -74,6 +75,16 @@ aliases:
   gpt: openai/gpt-4o
   claude: anthropic/claude-sonnet-4-5
   gem: gemini/gemini-2.5-flash
+moa:
+  default:
+    proposers:
+      - provider: openai
+        model: gpt-4o
+      - provider: anthropic
+        model: claude-sonnet-4-5
+    aggregator:
+      provider: openai
+      model: gpt-4o
 rate_limit:
   requests_per_minute: 0
 """)
@@ -105,6 +116,7 @@ rate_limit:
         check("models 含别名", {"gpt", "claude", "gem"} <= ids, str(ids))
         check("models 含底层模型",
               {"gpt-4o", "claude-sonnet-4-5", "gemini-2.5-flash"} <= ids, str(ids))
+        check("models 含 moa pipeline", "moa:default" in ids, str(ids))
 
         # 4 openai 非流式（首个 key sk-fake1 故障 -> 自动转移 sk-good1）
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
@@ -142,14 +154,89 @@ rate_limit:
                        json={"model": "openai/gpt-4o", "messages": [{"role": "user", "content": "hi"}]})
         check("provider/model 显式寻址", r.status_code == 200, str(r.status_code))
 
-        # 10 Responses 透传（openai_like）
+        # 10 Responses 透传（openai_like 原生 supports_responses）
         r = httpx.post(f"{BASE}/responses", headers=h,
                        json={"model": "gpt", "input": "hi"}).json()
         check("responses 透传 status=completed", r.get("status") == "completed", str(r)[:120])
 
-        # 11 Responses 在 anthropic 不支持 -> 501
-        r = httpx.post(f"{BASE}/responses", headers=h, json={"model": "claude", "input": "hi"})
-        check("responses anthropic 501", r.status_code == 501, str(r.status_code))
+        # 10b Responses 经转换到达 anthropic 上游
+        r = httpx.post(f"{BASE}/responses", headers=h,
+                       json={"model": "claude", "input": "hi"}).json()
+        check("responses->anthropic 转换 completed", r.get("status") == "completed", str(r)[:120])
+
+        # 10c Responses 经转换到达 gemini 上游
+        r = httpx.post(f"{BASE}/responses", headers=h,
+                       json={"model": "gem", "input": "hi"}).json()
+        check("responses->gemini 转换 completed", r.get("status") == "completed", str(r)[:120])
+
+        # 10d Responses 流式（转换路径 anthropic）
+        with httpx.stream("POST", f"{BASE}/responses", headers=h,
+                          json={"model": "claude", "input": "hi", "stream": True}) as st:
+            txt = b"".join(st.iter_bytes()).decode("utf-8", "ignore")
+        check("responses 流式含 completed", "response.completed" in txt, txt[:120])
+
+        # 10e /v1/messages（Anthropic 输入）到达 openai 上游
+        r = httpx.post(f"{BASE}/messages", headers=h,
+                       json={"model": "gpt", "max_tokens": 50,
+                             "messages": [{"role": "user", "content": "hi"}]})
+        check("messages->openai 200", r.status_code == 200, str(r.status_code) + r.text[:100])
+        if r.status_code == 200:
+            d = r.json()
+            check("messages 返回 anthropic 格式",
+                  d.get("type") == "message" and d.get("content"), str(d)[:120])
+
+        # 10f /v1/messages 到达 anthropic 上游（anthropic->chat->anthropic）
+        r = httpx.post(f"{BASE}/messages", headers=h,
+                       json={"model": "claude", "max_tokens": 50,
+                             "messages": [{"role": "user", "content": "hi"}]})
+        check("messages->anthropic 200", r.status_code == 200, str(r.status_code))
+
+        # 11 工具修复：tool-bad 上游返回非法 arguments，网关应规整为合法 JSON
+        r = httpx.post(f"{BASE}/chat/completions", headers=h,
+                       json={"model": "openai/tool-bad", "messages": [{"role": "user", "content": "x"}]})
+        check("tool-bad 200", r.status_code == 200, str(r.status_code))
+        if r.status_code == 200:
+            args = r.json()["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"]
+            import json as _j
+            try:
+                _j.loads(args); ok = True
+            except Exception:
+                ok = False
+            check("tool arguments 已修复为合法 JSON", ok, args[:80])
+
+        # 11b 流式中断不断流：stream-break 发一 chunk 后断，网关应合成 [DONE]
+        with httpx.stream("POST", f"{BASE}/chat/completions", headers=h,
+                          json={"model": "openai/stream-break", "stream": True,
+                                "messages": [{"role": "user", "content": "x"}]}) as st:
+            txt = b"".join(st.iter_bytes()).decode("utf-8", "ignore")
+        check("流式中断合成 [DONE]", "data: [DONE]" in txt, txt[:120])
+
+        # 11c MOA（chat 面，非流式）
+        r = httpx.post(f"{BASE}/chat/completions", headers=h,
+                       json={"model": "moa:default",
+                             "messages": [{"role": "user", "content": "hi"}]})
+        check("MOA chat 200", r.status_code == 200, str(r.status_code) + r.text[:120])
+        if r.status_code == 200:
+            c = r.json()["choices"][0]["message"].get("content")
+            check("MOA 有综合内容", bool(c), str(c)[:80])
+
+        # 11d MOA（responses 面，非流式）
+        r = httpx.post(f"{BASE}/responses", headers=h,
+                       json={"model": "moa:default", "input": "hi"})
+        check("MOA responses 200 completed", r.status_code == 200 and r.json().get("status") == "completed",
+              str(r.status_code) + r.text[:100])
+
+        # 11e MOA（chat 面，流式）
+        with httpx.stream("POST", f"{BASE}/chat/completions", headers=h,
+                          json={"model": "moa:default", "stream": True,
+                                "messages": [{"role": "user", "content": "hi"}]}) as st:
+            txt = b"".join(st.iter_bytes()).decode("utf-8", "ignore")
+        check("MOA 流式含 [DONE]", "data: [DONE]" in txt, txt[:100])
+
+        # 11f MOA 未知 pipeline -> 404
+        r = httpx.post(f"{BASE}/chat/completions", headers=h,
+                       json={"model": "moa:nope", "messages": [{"role": "user", "content": "hi"}]})
+        check("MOA 未知 pipeline 404", r.status_code == 404, str(r.status_code))
 
         # 12 embeddings 透传
         r = httpx.post(f"{BASE}/embeddings", headers=h,

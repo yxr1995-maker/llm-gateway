@@ -20,6 +20,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from .providers import UpstreamError, build_providers
+from .protocol import (
+    responses_req_to_chat, chat_resp_to_responses, chat_stream_to_responses,
+    anthropic_req_to_chat, chat_resp_to_anthropic, chat_stream_to_anthropic,
+)
+from .moa import is_moa, moa_pipeline_name, run_moa
 
 logger = logging.getLogger("llm-gateway.router")
 
@@ -133,6 +138,8 @@ async def chat_completions(request: Request):
 
     model = str(body.get("model") or "")
     stream = bool(body.get("stream"))
+    if is_moa(model):
+        return await _handle_moa(request, "chat", body, model)
     cfg = request.app.state.config
 
     try:
@@ -193,7 +200,7 @@ async def chat_completions(request: Request):
                 raise UpstreamError(result.status_code, result.text[:300])
 
             if not stream:
-                data = result.json()
+                data = _sanitize_chat_output(result.json())
                 pool.report_success(provider_name, key)
                 usage = data.get("usage") or {}
                 await _record_stats(
@@ -213,15 +220,7 @@ async def chat_completions(request: Request):
             except StopAsyncIteration:
                 first = None
             pool.report_success(provider_name, key)
-            return StreamingResponse(
-                counted_stream(first, result),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",
-                },
-            )
+            return _sse_response(_safe_stream(_chat_ensure_done(counted_stream(first, result)), _chat_error_tail()))
         except UpstreamError as exc:
             pool.report_failure(provider_name, key)
             last_msg = f"上游错误 ({provider_name}): HTTP {exc.status_code} {exc.message[:200]}"
@@ -259,6 +258,10 @@ async def list_models(request: Request):
             data.append(
                 {"id": str(m), "object": "model", "created": created, "owned_by": pname}
             )
+    for mname in (cfg.raw.get("moa") or {}):
+        data.append(
+            {"id": f"moa:{mname}", "object": "model", "created": created, "owned_by": "moa"}
+        )
     return {"object": "list", "data": data}
 
 
@@ -273,12 +276,90 @@ def _usage_triplet(data: dict) -> tuple[int, int, int]:
 
 @router.post("/v1/responses")
 async def responses(request: Request):
-    """OpenAI Responses API 透传（Codex 等 Responses-only 客户端）。
+    """OpenAI Responses API（统一枢纽）。
 
-    与 /v1/chat/completions 相同的鉴权 / 别名解析 / 密钥池故障转移，
-    但转发到上游 /responses 端点。仅 openai_like provider 支持
-    （上游需原生实现 Responses 协议，如火山 Ark / agnes）；
-    anthropic / gemini provider 不支持时返回 501。
+    - 上游原生支持 Responses（supports_responses=True，如火山 Ark / agnes）-> 透传
+    - 其他上游（anthropic / gemini / 仅 chat 的 openai_like）-> responses->chat->原生，
+      响应再 chat->responses 转回，流式同理
+    鉴权 / 别名解析 / 密钥池故障转移 / 限流 / 统计与 chat_completions 一致。
+    工具调用经 normalize，非法 JSON 兜底；流式中途异常合成合法收尾，不断连。
+    """
+    return await _dispatch_unified(request, wire="responses")
+
+
+@router.post("/v1/messages")
+async def messages(request: Request):
+    """Anthropic Messages API 输入端点（统一枢纽）。
+
+    anthropic 输入 -> chat -> 任意上游 -> chat -> anthropic 输出。
+    让只说 Anthropic 协议的客户端也能聚合到任意 provider。
+    """
+    return await _dispatch_unified(request, wire="anthropic")
+
+
+async def _handle_moa(request: Request, wire: str, body: dict, model: str):
+    """MOA 请求处理：归一化为 chat -> run_moa -> 转回客户端 wire 格式。"""
+    _refresh_runtime(request)
+    caller = _caller_key(request)
+    name = moa_pipeline_name(model)
+    stream = bool(body.get("stream"))
+
+    if wire == "responses":
+        chat_body = responses_req_to_chat(body)
+    elif wire == "anthropic":
+        chat_body = anthropic_req_to_chat(body)
+    else:
+        chat_body = dict(body)
+
+    t0 = time.monotonic()
+    try:
+        result = await run_moa(request.app.state.config, request.app.state.providers,
+                               request.app.state.pool, chat_body, name, stream)
+    except KeyError:
+        return _error(404, f"MOA pipeline `{name}` does not exist",
+                      "invalid_request_error", "model_not_found")
+    except Exception as exc:
+        await _record_stats(request, api_key=caller, model=model, provider="moa",
+                            latency_ms=int((time.monotonic() - t0) * 1000), status=502, stream=int(stream))
+        return _error(502, f"MOA failed: {exc!r}"[:300], "upstream_error", "upstream_error")
+
+    if not stream:
+        chat_data = result.json() if isinstance(result, httpx.Response) else result
+        if wire == "responses":
+            out = chat_resp_to_responses(chat_data, model)
+        elif wire == "anthropic":
+            out = chat_resp_to_anthropic(chat_data, model)
+        else:
+            out = _sanitize_chat_output(chat_data)
+        pt = out.get("usage", {}).get("input_tokens", 0) if wire != "chat" else 0
+        ct = out.get("usage", {}).get("output_tokens", 0) if wire != "chat" else 0
+        await _record_stats(request, api_key=caller, model=model, provider="moa",
+                            prompt_tokens=pt, completion_tokens=ct, total_tokens=pt + ct,
+                            latency_ms=int((time.monotonic() - t0) * 1000), status=200, stream=0)
+        return JSONResponse(content=out)
+
+    # 流式：aggregator 的 chat 流 -> 客户端 wire
+    if wire == "responses":
+        conv = chat_stream_to_responses(result, model, True)
+        tail = _responses_error_tail(model)
+    elif wire == "anthropic":
+        conv = chat_stream_to_anthropic(result, model)
+        tail = _anthropic_error_tail()
+    else:
+        conv = _chat_ensure_done(result)
+        tail = _chat_error_tail()
+    await _record_stats(request, api_key=caller, model=model, provider="moa",
+                        latency_ms=int((time.monotonic() - t0) * 1000), status=200, stream=1)
+    return _sse_response(_safe_stream(conv, tail))
+
+
+async def _dispatch_unified(request: Request, wire: str) -> JSONResponse | StreamingResponse:
+    """responses / anthropic 两种输入面的统一分发。
+
+    wire="responses"  : 输入/输出 OpenAI Responses
+    wire="anthropic"  : 输入/输出 Anthropic Messages
+    内部一律转 chat 调 provider.chat_completions（复用各家 chat<->原生转换）。
+    supports_responses=True 的 openai_like 上游在 responses 面走原生透传快路径。
     """
     _refresh_runtime(request)
     auth_err = _check_auth(request)
@@ -294,97 +375,98 @@ async def responses(request: Request):
 
     model = str(body.get("model") or "")
     stream = bool(body.get("stream"))
+    if is_moa(model):
+        return await _handle_moa(request, wire, body, model)
     cfg = request.app.state.config
 
     try:
         provider_name, real_model = cfg.resolve_model(model)
     except KeyError:
         return _error(
-            404,
-            f"The model `{model}` does not exist",
-            "invalid_request_error",
-            "model_not_found",
+            404, f"The model `{model}` does not exist",
+            "invalid_request_error", "model_not_found",
         )
 
     provider = request.app.state.providers.get(provider_name)
     if provider is None:
         return _error(500, f"Provider `{provider_name}` 初始化失败", "server_error")
-    call = getattr(provider, "responses", None)
-    if not callable(call):
-        return _error(
-            501,
-            f"Provider `{provider_name}` ({provider.type}) 不支持 Responses API",
-            "invalid_request_error",
-            "unsupported_endpoint",
-        )
+
+    # responses 面且上游原生支持 -> 透传快路径
+    passthrough = wire == "responses" and provider.supports_responses and callable(getattr(provider, "responses", None))
 
     pool = request.app.state.pool
     caller = _caller_key(request)
-
     if not await _ratelimit_allow(request, f"{caller}:{model}"):
-        return _error(
-            429, "Rate limit exceeded", "rate_limit_exceeded", "rate_limit_exceeded"
-        )
+        return _error(429, "Rate limit exceeded", "rate_limit_exceeded", "rate_limit_exceeded")
 
     t0 = time.monotonic()
     attempts = max(1, pool.size(provider_name))
     last_msg = f"provider `{provider_name}` 无可用上游 key"
 
-    async def record_stream_done(nchars: int) -> None:
-        est = nchars // 4 if nchars else 0
-        await _record_stats(
-            request, api_key=caller, model=model, provider=provider_name,
-            prompt_tokens=0, completion_tokens=est, total_tokens=est,
-            latency_ms=int((time.monotonic() - t0) * 1000), status=200, stream=1,
-        )
-
-    async def counted_stream(first: bytes | None,
-                             agen: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
-        nchars = 0
-        if first is not None:
-            nchars += len(first.decode("utf-8", "ignore"))
-            yield first
-        async for chunk in agen:
-            nchars += len(chunk.decode("utf-8", "ignore"))
-            yield chunk
-        await record_stream_done(nchars)
+    want_usage = wire == "responses"  # responses 流尽量带 usage
 
     for _ in range(attempts):
         key = pool.acquire(provider_name)
         if key is None:
             break
         try:
-            result = await call(real_model, body, key, stream)
+            if passthrough:
+                result = await provider.responses(real_model, body, key, stream)
+                if isinstance(result, httpx.Response) and result.status_code >= 400:
+                    raise UpstreamError(result.status_code, result.text[:300])
+                if not stream:
+                    data = _sanitize_responses_output(result.json())
+                    pool.report_success(provider_name, key)
+                    pt, ct, tt = _usage_triplet(data)
+                    await _record_stats(request, api_key=caller, model=model,
+                        provider=provider_name, prompt_tokens=pt, completion_tokens=ct,
+                        total_tokens=tt, latency_ms=int((time.monotonic()-t0)*1000), status=200, stream=0)
+                    return JSONResponse(content=data)
+                try:
+                    first = await result.__anext__()
+                except StopAsyncIteration:
+                    first = None
+                pool.report_success(provider_name, key)
+                return _sse_response(_safe_stream(result, _responses_error_tail(model)))
+
+            # 转换路径：input -> chat
+            if wire == "responses":
+                chat_body = responses_req_to_chat(body)
+            else:
+                chat_body = anthropic_req_to_chat(body)
+            chat_body["model"] = real_model
+            chat_body["stream"] = stream
+            result = await provider.chat_completions(real_model, chat_body, key, stream)
             if isinstance(result, httpx.Response) and result.status_code >= 400:
                 raise UpstreamError(result.status_code, result.text[:300])
 
             if not stream:
-                data = result.json()
+                chat_data = result.json()
                 pool.report_success(provider_name, key)
-                prompt_t, completion_t, total_t = _usage_triplet(data)
-                await _record_stats(
-                    request, api_key=caller, model=model, provider=provider_name,
-                    prompt_tokens=prompt_t, completion_tokens=completion_t,
-                    total_tokens=total_t,
-                    latency_ms=int((time.monotonic() - t0) * 1000),
-                    status=200, stream=0,
-                )
-                return JSONResponse(content=data)
+                if wire == "responses":
+                    out = chat_resp_to_responses(chat_data, model)
+                else:
+                    out = chat_resp_to_anthropic(chat_data, model)
+                pt = out.get("usage", {}).get("input_tokens", 0)
+                ct = out.get("usage", {}).get("output_tokens", 0)
+                await _record_stats(request, api_key=caller, model=model,
+                    provider=provider_name, prompt_tokens=pt, completion_tokens=ct,
+                    total_tokens=pt+ct, latency_ms=int((time.monotonic()-t0)*1000), status=200, stream=0)
+                return JSONResponse(content=out)
 
+            # 流式转换
             try:
                 first = await result.__anext__()
             except StopAsyncIteration:
                 first = None
             pool.report_success(provider_name, key)
-            return StreamingResponse(
-                counted_stream(first, result),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",
-                },
-            )
+            if wire == "responses":
+                conv = chat_stream_to_responses(_prepend(first, result), model, want_usage)
+                tail = _responses_error_tail(model)
+            else:
+                conv = chat_stream_to_anthropic(_prepend(first, result), model)
+                tail = _anthropic_error_tail()
+            return _sse_response(_safe_stream(conv, tail))
         except UpstreamError as exc:
             pool.report_failure(provider_name, key)
             last_msg = f"上游错误 ({provider_name}): HTTP {exc.status_code} {exc.message[:200]}"
@@ -394,11 +476,89 @@ async def responses(request: Request):
             last_msg = f"上游请求失败 ({provider_name}): {exc!r}"[:300]
             logger.warning("key 故障转移: %s", last_msg)
 
-    await _record_stats(
-        request, api_key=caller, model=model, provider=provider_name,
-        latency_ms=int((time.monotonic() - t0) * 1000), status=502, stream=int(stream),
-    )
+    await _record_stats(request, api_key=caller, model=model, provider=provider_name,
+        latency_ms=int((time.monotonic()-t0)*1000), status=502, stream=int(stream))
     return _error(502, last_msg, "upstream_error", "upstream_error")
+
+
+def _sanitize_responses_output(data: dict) -> dict:
+    """透传 responses 输出时修复 function_call 非法 arguments，避免客户端解析崩。"""
+    from .protocol import repair_arguments
+    for item in data.get("output") or []:
+        if isinstance(item, dict) and item.get("type") == "function_call":
+            item["arguments"] = repair_arguments(item.get("arguments"))
+    return data
+
+
+async def _prepend(first: bytes | None, agen: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
+    if first is not None:
+        yield first
+    async for chunk in agen:
+        yield chunk
+
+
+def _sse_response(agen: AsyncIterator[bytes]) -> StreamingResponse:
+    return StreamingResponse(agen, media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"})
+
+
+async def _safe_stream(agen: AsyncIterator[bytes], error_tail: bytes) -> AsyncIterator[bytes]:
+    """流式中途上游异常时合成合法收尾，避免客户端会话因断流而中断。"""
+    try:
+        async for chunk in agen:
+            yield chunk
+    except Exception as exc:
+        logger.warning("流式中途异常，合成收尾不断连: %r", exc)
+        if error_tail:
+            yield error_tail
+
+
+async def _chat_ensure_done(agen: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
+    """chat 流：若上游提前结束且未发 [DONE]，补一个 finish chunk + [DONE]，
+    避免客户端因缺少终止符而挂起/中断会话。"""
+    saw_done = False
+    async for chunk in agen:
+        if b"[DONE]" in chunk:
+            saw_done = True
+        yield chunk
+    if not saw_done:
+        yield _chat_error_tail()
+
+
+def _sanitize_chat_output(data: dict) -> dict:
+    """chat 输出工具调用规整：补 id、修非法 arguments。"""
+    from .protocol import normalize_tool_calls
+    for ch in data.get("choices") or []:
+        msg = (ch or {}).get("message") or {}
+        if msg.get("tool_calls"):
+            msg["tool_calls"] = normalize_tool_calls(msg["tool_calls"])
+    return data
+
+
+def _chat_error_tail() -> bytes:
+    """chat 流式中断时的合法收尾：一个 finish chunk + [DONE]。"""
+    import json as _json, time as _time
+    chunk = {"object": "chat.completion.chunk", "created": int(_time.time()),
+             "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+    return ("data: " + _json.dumps(chunk, ensure_ascii=False) + "\n\ndata: [DONE]\n\n").encode()
+
+
+def _responses_error_tail(model: str) -> bytes:
+    import json as _json, uuid as _uuid, time as _time
+    rid = f"resp_{_uuid.uuid4().hex[:24]}"
+    payload = {"type": "response.completed", "response": {
+        "id": rid, "object": "response", "created_at": int(_time.time()),
+        "status": "completed", "model": model, "output": []}}
+    return ("event: response.completed\ndata: " + _json.dumps(payload, ensure_ascii=False) + "\n\n").encode()
+
+
+def _anthropic_error_tail() -> bytes:
+    import json as _json
+    out = ("event: message_delta\ndata: " + _json.dumps(
+        {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+         "usage": {"output_tokens": 0}}) + "\n\n").encode()
+    out += ("event: message_stop\ndata: " + _json.dumps({"type": "message_stop"}) + "\n\n").encode()
+    return out
 
 
 @router.post("/v1/embeddings")
