@@ -124,6 +124,28 @@ planner_worker:
     max_concurrency: 4
 
 # ---------------------------------------------------------------------
+# Cascade: tiered by reasoning level (L0 fast/cheap -> Ln T1/expensive).
+# A cheap router picks the start tier; self-consistency + self-verify decide
+# whether to accept or escalate. T1 is the quality floor. Trigger: cascade:<name>
+# ---------------------------------------------------------------------
+cascade:
+  solve:
+    router: { provider: openai, model: gpt-4o-mini }
+    tiers:
+      - {name: L0, provider: openai, model: gpt-4o-mini, reasoning_effort: none}
+      - {name: L1, provider: openai, model: gpt-4o, reasoning_effort: low}
+      - {name: L2, provider: openai, model: gpt-4o, reasoning_effort: high}   # T1 floor
+    consensus_k: 3
+    strictness: balanced      # frugal / balanced / strict
+
+# ---------------------------------------------------------------------
+# Result cache (optional): caches non-stream upstream calls by (provider,model,body)
+# ---------------------------------------------------------------------
+cache:
+  enabled: false
+  ttl: 3600
+
+# ---------------------------------------------------------------------
 # rate-limit: per (caller key + model) token-bucket limit (in-process)
 # ---------------------------------------------------------------------
 rate_limit:

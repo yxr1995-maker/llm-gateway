@@ -26,6 +26,7 @@ from .protocol import (
 )
 from .moa import is_moa, moa_pipeline_name, run_moa
 from .planner_worker import is_pw, pw_name, run_planner_worker
+from .cascade import is_cascade, cascade_name, run_cascade
 
 logger = logging.getLogger("llm-gateway.router")
 
@@ -143,6 +144,8 @@ async def chat_completions(request: Request):
         return await _handle_moa(request, "chat", body, model)
     if is_pw(model):
         return await _handle_pw(request, "chat", body, model)
+    if is_cascade(model):
+        return await _handle_cascade(request, "chat", body, model)
     cfg = request.app.state.config
 
     try:
@@ -192,6 +195,16 @@ async def chat_completions(request: Request):
             yield chunk
         await record_stream_done(nchars)
 
+    _ck = None
+    if not stream:
+        from . import cache as _cache
+        if _cache.ENABLED:
+            _ck = _cache.make_key(provider_name, real_model, body)
+            _hit = await _cache.get(_ck)
+            if _hit is not None:
+                await _record_stats(request, api_key=caller, model=model, provider=provider_name,
+                    latency_ms=0, status=200, stream=0)
+                return JSONResponse(content=_sanitize_chat_output(_hit), headers={"x-cache": "HIT"})
     for _ in range(attempts):
         key = pool.acquire(provider_name)
         if key is None:
@@ -205,6 +218,9 @@ async def chat_completions(request: Request):
             if not stream:
                 data = _sanitize_chat_output(result.json())
                 pool.report_success(provider_name, key)
+                if _ck is not None:
+                    try: await _cache.set(_ck, data)
+                    except Exception: pass
                 usage = data.get("usage") or {}
                 await _record_stats(
                     request, api_key=caller, model=model, provider=provider_name,
@@ -214,7 +230,7 @@ async def chat_completions(request: Request):
                     latency_ms=int((time.monotonic() - t0) * 1000),
                     status=200, stream=0,
                 )
-                return JSONResponse(content=data)
+                return JSONResponse(content=data, headers={"x-cache": "MISS"})
 
             # streaming: fetch the first chunk, confirm upstream 2xx and producing, then respond to the client;
             # otherwise we can still fail over in the pool (response headers not yet sent)
@@ -273,6 +289,10 @@ async def list_models(request: Request):
     for pname in (cfg.raw.get("planner_worker") or {}):
         data.append(
             {"id": f"pw:{pname}", "object": "model", "created": created, "owned_by": "planner_worker"}
+        )
+    for cname in (cfg.raw.get("cascade") or {}):
+        data.append(
+            {"id": f"cascade:{cname}", "object": "model", "created": created, "owned_by": "cascade"}
         )
     return {"object": "list", "data": data}
 
@@ -418,6 +438,44 @@ async def _handle_pw(request: Request, wire: str, body: dict, model: str):
     return _sse_response(_safe_stream(conv, tail))
 
 
+async def _handle_cascade(request: Request, wire: str, body: dict, model: str):
+    """Cascade handler: normalize to chat -> run_cascade -> convert back."""
+    _refresh_runtime(request)
+    caller = _caller_key(request)
+    name = cascade_name(model)
+    stream = bool(body.get("stream"))
+    if wire == "responses":
+        chat_body = responses_req_to_chat(body)
+    elif wire == "anthropic":
+        chat_body = anthropic_req_to_chat(body)
+    else:
+        chat_body = dict(body)
+    t0 = time.monotonic()
+    try:
+        result = await run_cascade(request.app.state.config, request.app.state.providers,
+                                   request.app.state.pool, chat_body, name, stream)
+    except KeyError:
+        return _error(404, f"Cascade pipeline `{name}` does not exist",
+                      "invalid_request_error", "model_not_found")
+    except Exception as exc:
+        await _record_stats(request, api_key=caller, model=model, provider="cascade",
+                            latency_ms=int((time.monotonic() - t0) * 1000), status=502, stream=int(stream))
+        return _error(502, f"Cascade failed: {exc!r}"[:300], "upstream_error", "upstream_error")
+    chat_data = result.json() if isinstance(result, httpx.Response) else result
+    if wire == "responses":
+        out = chat_resp_to_responses(chat_data, model)
+    elif wire == "anthropic":
+        out = chat_resp_to_anthropic(chat_data, model)
+    else:
+        out = _sanitize_chat_output(chat_data)
+    pt = out.get("usage", {}).get("input_tokens", 0) if wire != "chat" else 0
+    ct = out.get("usage", {}).get("output_tokens", 0) if wire != "chat" else 0
+    await _record_stats(request, api_key=caller, model=model, provider="cascade",
+                        prompt_tokens=pt, completion_tokens=ct, total_tokens=pt + ct,
+                        latency_ms=int((time.monotonic() - t0) * 1000), status=200, stream=0)
+    return JSONResponse(content=out)
+
+
 async def _dispatch_unified(request: Request, wire: str) -> JSONResponse | StreamingResponse:
     """Unified dispatch for the responses / anthropic input faces.
 
@@ -444,6 +502,8 @@ async def _dispatch_unified(request: Request, wire: str) -> JSONResponse | Strea
         return await _handle_moa(request, wire, body, model)
     if is_pw(model):
         return await _handle_pw(request, wire, body, model)
+    if is_cascade(model):
+        return await _handle_cascade(request, wire, body, model)
     cfg = request.app.state.config
 
     try:

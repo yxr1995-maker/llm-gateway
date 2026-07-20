@@ -35,6 +35,7 @@ from typing import AsyncIterator
 
 import httpx
 
+from . import cache as _cache
 from .providers import UpstreamError
 
 logger = logging.getLogger("llm-gateway.moa")
@@ -87,6 +88,11 @@ async def _with_sem(sem, coro_fn):
 async def _call_chat(provider, provider_name, model, chat_body, pool, stream, sem=None):
     attempts = max(1, pool.size(provider_name))
     last: Exception | None = None
+    cache_key = _cache.make_key(provider_name, model, chat_body) if (not stream and _cache.ENABLED) else None
+    if cache_key is not None:
+        hit = await _cache.get(cache_key)
+        if hit is not None:
+            return httpx.Response(200, json=hit, headers={"content-type": "application/json", "x-cache": "HIT"})
     for _ in range(attempts):
         key = pool.acquire(provider_name)
         if key is None:
@@ -97,6 +103,11 @@ async def _call_chat(provider, provider_name, model, chat_body, pool, stream, se
             if isinstance(result, httpx.Response) and result.status_code >= 400:
                 raise UpstreamError(result.status_code, result.text[:300])
             pool.report_success(provider_name, key)
+            if cache_key is not None and isinstance(result, httpx.Response) and result.status_code < 400:
+                try:
+                    await _cache.set(cache_key, result.json())
+                except Exception:
+                    pass
             return result
         except UpstreamError as exc:
             pool.report_failure(provider_name, key); last = exc

@@ -210,6 +210,10 @@ class Handler(BaseHTTPRequestHandler):
             content = '{"subtasks":[{"id":1,"description":"sub A"},{"id":2,"description":"sub B"}]}'
         elif "synthesize" in blob:
             content = "SYNTHESIZED"
+        elif "router" in blob and "tier" in blob:
+            content = '{"tier":0}'
+        elif "verifier" in blob:
+            content = '{"confident":true,"score":1.0,"issues":""}'
         else:
             content = "".join(OPENAI_WORDS)
         if not stream:

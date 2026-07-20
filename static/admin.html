@@ -174,6 +174,11 @@
       <div class="desc" data-i18n="pw_desc"></div>
       <div id="pw-list"></div>
     </div>
+    <div class="card">
+      <div class="section-head"><h2 data-i18n="cascade_title"></h2><button class="btn subtle small" id="add-cascade"><span data-i18n="add_cascade"></span></button></div>
+      <div class="desc" data-i18n="cascade_desc"></div>
+      <div id="cascade-list"></div>
+    </div>
   </div>
 
   <div class="panel" id="panel-overview">
@@ -363,7 +368,7 @@
   $$(".tab").forEach(function(b){ b.addEventListener("click", function(){ $$(".tab").forEach(function(x){x.classList.remove("active");}); b.classList.add("active"); currentTab=b.dataset.tab; $$(".panel").forEach(function(p){p.classList.remove("active");}); $("#panel-"+currentTab).classList.add("active"); if(currentTab==="overview") loadOverview(); if(currentTab==="usage") loadUsage(); }); });
 
   function init() {
-    api("/admin/api/config/raw").then(function(cfg){ raw=cfg; $("#auth-overlay").classList.remove("show"); setAuthPill(!!(cfg.server&&cfg.server.master_key)); clearDirty(); renderAuth(); renderProvList(); renderAliasList(); renderMoaList(); renderPWList(); loadOverview(); loadUsage(); }).catch(function(){});
+    api("/admin/api/config/raw").then(function(cfg){ raw=cfg; $("#auth-overlay").classList.remove("show"); setAuthPill(!!(cfg.server&&cfg.server.master_key)); clearDirty(); renderAuth(); renderProvList(); renderAliasList(); renderMoaList(); renderPWList(); renderCascadeList(); loadOverview(); loadUsage(); }).catch(function(){});
   }
   function ensureSections(){ raw.server=raw.server||{}; raw.providers=raw.providers||{}; raw.aliases=raw.aliases||{}; raw.moa=raw.moa||{}; raw.rate_limit=raw.rate_limit||{}; }
 
@@ -511,6 +516,34 @@
   }
 
   $("#add-pw").addEventListener("click", function(){ var n="pw_"+Date.now(); ensureSections(); raw.planner_worker=raw.planner_worker||{}; raw.planner_worker[n]={planner:{provider:"",model:"",reasoning_effort:"default"},workers:[{provider:"",model:"",reasoning_effort:"default"}],max_rounds:1,max_concurrency:4}; expanded.moa.add("pw:"+n); renderPWList(); markDirty(); });
+  function renderCascadeList() {
+    var names=Object.keys(raw.cascade||{});
+    if(!names.length){ $("#cascade-list").innerHTML='<div class="empty">'+t("no_cascade")+'</div>'; return; }
+    var h="";
+    names.forEach(function(n){ var m=raw.cascade[n]||{}; var open=expanded.moa.has("cs:"+n);
+      h+='<div class="subcard '+(open?'open':'')+'" data-cs="'+esc(n)+'"><div class="sc-head"><svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg><span class="sc-title">cascade:'+esc(n)+'</span><span class="sc-meta">'+(m.tiers||[]).length+' '+t("tiers").toLowerCase()+'</span><button class="btn danger ghost small ed-csdel">'+t("del")+'</button></div>';
+      h+='<div class="sc-body"><div class="field"><label>Name</label><input class="ed-csname" type="text" value="'+esc(n)+'" style="max-width:260px;"></div>';
+      h+='<div class="grid2"><div class="field"><label>'+t("max_concurrency")+'</label><input class="ed-csconc" type="number" value="'+esc(m.max_concurrency||4)+'" style="max-width:120px;"></div><div class="field"><label>'+t("consensus_k")+'</label><input class="ed-csk" type="number" value="'+esc(m.consensus_k||1)+'" style="max-width:120px;"></div></div>';
+      var rt=m.router||{};
+      h+='<div class="field" style="margin-top:12px;"><label>'+t("router")+'</label><div class="row-inline" style="gap:6px;"><select class="ed-csrtprov" style="max-width:150px;">'+provOpts(rt.provider)+'</select><select class="ed-csrtmodel" style="max-width:170px;">'+modelOpts(rt.provider,rt.model)+'</select></div></div>';
+      h+='<div class="field" style="margin-top:12px;"><label>'+t("tiers")+' <span style="text-transform:none;color:var(--faint);font-weight:400;">('+t("tiers_hint")+')</span></label><div class="ed-cstiers">';
+      (m.tiers||[]).forEach(function(t2,i){
+        h+='<div class="row-inline" style="margin-bottom:6px;gap:6px;" data-ti="'+i+'"><input class="ed-cstname" type="text" value="'+esc(t2.name||("L"+i))+'" placeholder="L0" style="max-width:70px;"><select class="ed-cstprov" style="max-width:140px;">'+provOpts(t2.provider)+'</select><select class="ed-cstmodel" style="max-width:160px;">'+modelOpts(t2.provider,t2.model)+'</select><select class="ed-cstreason" style="max-width:110px;" title="'+t("reasoning_effort")+'">'+reasonAgentOpts(t2.reasoning_effort||"default")+'</select><button class="btn danger ghost small ed-cstdel">'+t("del")+'</button></div>';
+      });
+      h+='</div><button class="btn subtle small ed-cstadd" style="margin-top:6px;">'+t("add_tier")+'</button></div>';
+      h+='</div></div>';
+    });
+    $("#cascade-list").innerHTML=h;
+    $$("#cascade-list .subcard").forEach(function(sc){ var n=sc.getAttribute("data-cs"); var m=raw.cascade[n];
+      sc.querySelector(".sc-head").addEventListener("click", function(e){ if(e.target.closest("button")) return; var k="cs:"+n; if(expanded.moa.has(k)){expanded.moa.delete(k);sc.classList.remove("open");}else{expanded.moa.add(k);sc.classList.add("open");} });
+      sc.querySelector(".ed-csdel").addEventListener("click", function(){ askConfirm(t("delete"), t("confirm_delete"), function(){ delete raw.cascade[n]; renderCascadeList(); markDirty(); }); });
+      sc.querySelector(".ed-csrtprov").addEventListener("change", function(){ var pv=this.value; sc.querySelector(".ed-csrtmodel").innerHTML=modelOpts(pv,(provModels(pv)[0]||"")); markDirty(); });
+      sc.querySelector(".ed-cstadd").addEventListener("click", function(){ m.tiers=m.tiers||[]; m.tiers.push({name:"L"+m.tiers.length,provider:"",model:"",reasoning_effort:"default"}); expanded.moa.add("cs:"+n); renderCascadeList(); markDirty(); });
+      sc.querySelectorAll(".ed-cstiers .row-inline").forEach(function(r){ r.querySelector(".ed-cstprov").addEventListener("change", function(){ var pv=this.value; r.querySelector(".ed-cstmodel").innerHTML=modelOpts(pv,(provModels(pv)[0]||"")); markDirty(); }); r.querySelector(".ed-cstdel").addEventListener("click", function(){ var idx=parseInt(r.getAttribute("data-ti"),10); raw.cascade[n].tiers.splice(idx,1); renderCascadeList(); markDirty(); }); });
+    });
+  }
+  $("#add-cascade").addEventListener("click", function(){ var n="cascade_"+Date.now(); ensureSections(); raw.cascade=raw.cascade||{}; raw.cascade[n]={router:{provider:"",model:""},tiers:[{name:"L0",provider:"",model:"",reasoning_effort:"default"}],consensus_k:1,max_concurrency:4}; expanded.moa.add("cs:"+n); renderCascadeList(); markDirty(); });
+
   $("#add-prov").addEventListener("click", function(){ var n="provider_"+Date.now(); ensureSections(); raw.providers[n]={type:"openai_like",base_url:"",keys:[],models:[],supports_responses:false}; expanded.prov.add(n); renderProvList(); markDirty(); });
   $("#add-alias").addEventListener("click", function(){ var n="alias_"+Date.now(); ensureSections(); raw.aliases[n]=""; renderAliasList(); markDirty(); });
   $("#add-moa").addEventListener("click", function(){ var n="pipeline_"+Date.now(); ensureSections(); raw.moa[n]={proposers:[{provider:"",model:"",reasoning_effort:"none"}],aggregator:{provider:"",model:"",reasoning_effort:"none"}}; expanded.moa.add(n); renderMoaList(); markDirty(); });
@@ -535,6 +568,7 @@
     var al={}; $$("#alias-list .row-inline").forEach(function(el){ var a=el.querySelector(".ed-aname").value.trim(); var pv=el.querySelector(".ed-aprov").value; var mv=el.querySelector(".ed-amodel").value; if(a&&pv&&mv) al[a]=pv+"/"+mv; }); raw.aliases=al;
     var moa={}; $$("#moa-list .subcard").forEach(function(el){ var n=el.querySelector(".ed-mname").value.trim()||el.getAttribute("data-moa"); var entry={}; var mc=el.querySelector(".ed-mconc").value.trim(); if(mc) entry.max_concurrency=parseInt(mc,10); var md=el.querySelector(".ed-mdefault").value; if(md&&md!=="none") entry.default_reasoning_effort=md; if(el.querySelector(".ed-stages")){ var stages=[]; el.querySelectorAll(".ed-stage").forEach(function(st){ var mod=st.querySelector(".ed-smod").value, pv=st.querySelector(".ed-sprov").value, mv=st.querySelector(".ed-smodel").value; if(pv&&mv){ var o={provider:pv,model:mv,modality:mod}; var re=st.querySelector(".ed-sreason").value; if(re&&re!=="default") o.reasoning_effort=re; var pr=st.querySelector(".ed-sprompt").value.trim(); if(pr) o.prompt=pr; if(st.querySelector(".ed-sparallel").checked) o.parallel=true; if(st.querySelector(".ed-soptional").checked) o.optional=true; var to=st.querySelector(".ed-stimeout").value.trim(); if(to) o.timeout=parseInt(to,10); stages.push(o); } }); entry.stages=stages; } else { var props=[]; el.querySelectorAll(".ed-props .row-inline").forEach(function(p){ var pv=p.querySelector(".ed-pprov").value, mv=p.querySelector(".ed-pmodel").value; var re=p.querySelector(".ed-preason").value; if(pv&&mv){ var o={provider:pv,model:mv}; if(re&&re!=="default") o.reasoning_effort=re; props.push(o); } }); entry.proposers=props; var ag={provider:el.querySelector(".ed-agprov").value,model:el.querySelector(".ed-agmodel").value}; var are=el.querySelector(".ed-agreason").value; if(are&&are!=="default") ag.reasoning_effort=are; entry.aggregator=ag; var ap=el.querySelector(".ed-agprompt").value; if(ap&&ap.trim()) entry.aggregator_prompt=ap.trim(); } moa[n]=entry; }); raw.moa=moa;
     var pw={}; $$("#pw-list .subcard").forEach(function(el){ var n=el.querySelector(".ed-pwname").value.trim()||el.getAttribute("data-pw"); var entry={}; var mc=el.querySelector(".ed-pwconc").value.trim(); if(mc) entry.max_concurrency=parseInt(mc,10); var mr=el.querySelector(".ed-pwrounds").value.trim(); if(mr) entry.max_rounds=parseInt(mr,10); var pl={provider:el.querySelector(".ed-pwpprov").value,model:el.querySelector(".ed-pwmodel").value}; var pre=el.querySelector(".ed-pwpreason").value; if(pre&&pre!=="default") pl.reasoning_effort=pre; entry.planner=pl; var ws=[]; el.querySelectorAll(".ed-pwworkers .row-inline").forEach(function(r){ var pv=r.querySelector(".ed-pwwprov").value, mv=r.querySelector(".ed-pwwmodel").value; var re=r.querySelector(".ed-pwwreason").value; if(pv&&mv){ var o={provider:pv,model:mv}; if(re&&re!=="default") o.reasoning_effort=re; ws.push(o); } }); entry.workers=ws; pw[n]=entry; }); raw.planner_worker=pw;
+    var cs={}; $$("#cascade-list .subcard").forEach(function(el){ var n=el.querySelector(".ed-csname").value.trim()||el.getAttribute("data-cs"); var entry={}; var mc=el.querySelector(".ed-csconc").value.trim(); if(mc) entry.max_concurrency=parseInt(mc,10); var ck=el.querySelector(".ed-csk").value.trim(); if(ck) entry.consensus_k=parseInt(ck,10); entry.router={provider:el.querySelector(".ed-csrtprov").value,model:el.querySelector(".ed-csrtmodel").value}; var ts=[]; el.querySelectorAll(".ed-cstiers .row-inline").forEach(function(r){ var nm=r.querySelector(".ed-cstname").value.trim(), pv=r.querySelector(".ed-cstprov").value, mv=r.querySelector(".ed-cstmodel").value, re=r.querySelector(".ed-cstreason").value; if(pv&&mv){ var o={name:nm||("L"+ts.length),provider:pv,model:mv}; if(re&&re!=="default") o.reasoning_effort=re; ts.push(o); } }); entry.tiers=ts; cs[n]=entry; }); raw.cascade=cs;
   }
   function saveConfig() {
     collectConfig();

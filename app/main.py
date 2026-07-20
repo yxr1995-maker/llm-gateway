@@ -130,10 +130,24 @@ def create_app(config_path: str | None = None) -> FastAPI:
         # startup: optional stats table init etc.
         await _call_optional(getattr(app.state, "stats", None),
                              ["init", "setup", "connect", "open", "start"])
+        try:
+            from app import cache as cache_mod
+            cc = (config.raw.get("cache") or {})
+            await cache_mod.init(enabled=cc.get("enabled"), ttl=cc.get("ttl"))
+            app.state.cache = cache_mod
+            if cache_mod.ENABLED:
+                logger.info("result cache enabled: ttl=%s", cache_mod.TTL)
+        except Exception:
+            logger.warning("cache init failed, continuing without cache", exc_info=True)
         yield
         # shutdown: optional module cleanup + shared httpx client
         await _call_optional(getattr(app.state, "stats", None),
                              ["close", "aclose", "stop", "shutdown"])
+        try:
+            from app import cache as cache_mod
+            await cache_mod.close()
+        except Exception:
+            pass
         await close_client()
 
     app = FastAPI(title="llm-gateway", version="0.1.0", lifespan=lifespan)

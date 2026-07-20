@@ -125,6 +125,28 @@ planner_worker:
         model: claude-sonnet-4-5
     max_rounds: 1
     max_concurrency: 2
+cascade:
+  solve:
+    router:
+      provider: openai
+      model: gpt-4o
+    tiers:
+      - name: L0
+        provider: openai
+        model: gpt-4o
+        reasoning_effort: none
+      - name: L1
+        provider: openai
+        model: gpt-4o
+        reasoning_effort: low
+      - name: L2
+        provider: anthropic
+        model: claude-sonnet-4-5
+        reasoning_effort: high
+    consensus_k: 1
+cache:
+  enabled: true
+  ttl: 60
 rate_limit:
   requests_per_minute: 0
 """)
@@ -160,6 +182,7 @@ rate_limit:
         check("model context_window exposed", ctx.get("gpt-4o") == 128000, str(ctx))
         check("models include moa pipeline", "moa:default" in ids, str(ids))
         check("models include pw pipeline", "pw:solve" in ids, str(ids))
+        check("models include cascade", "cascade:solve" in ids, str(ids))
 
         # 4 openai non-stream (first key sk-fake1 fails -> auto-failover sk-good1)
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
@@ -291,6 +314,25 @@ rate_limit:
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
                        json={"model": "pw:nope", "messages": [{"role": "user", "content": "x"}]})
         check("PW unknown pipeline 404", r.status_code == 404, str(r.status_code))
+
+        # 11h cascade: route -> L0 answer -> verify accept
+        r = httpx.post(f"{BASE}/chat/completions", headers=h,
+                       json={"model": "cascade:solve", "messages": [{"role": "user", "content": "hi"}]})
+        check("cascade chat 200", r.status_code == 200, str(r.status_code)+r.text[:120])
+        if r.status_code == 200:
+            check("cascade accepted at L0", r.json()["choices"][0]["message"].get("content") == "Hello from mock openai!", r.text[:160])
+
+        # 11h2 cascade unknown -> 404
+        r = httpx.post(f"{BASE}/chat/completions", headers=h,
+                       json={"model": "cascade:nope", "messages": [{"role": "user", "content": "x"}]})
+        check("cascade unknown 404", r.status_code == 404, str(r.status_code))
+
+        # 11i result cache: identical call -> second is HIT
+        body = {"model": "gpt-4o", "messages": [{"role": "user", "content": "cachecheck"}]}
+        r1 = httpx.post(f"{BASE}/chat/completions", headers=h, json=body)
+        r2 = httpx.post(f"{BASE}/chat/completions", headers=h, json=body)
+        check("cache first MISS", r1.headers.get("x-cache") == "MISS", r1.headers.get("x-cache"))
+        check("cache second HIT", r2.headers.get("x-cache") == "HIT", r2.headers.get("x-cache"))
 
         # 11f1 multimodal staged pipeline (image -> vision -> text)
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
