@@ -1,218 +1,312 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LLM Gateway Admin</title>
+<title>LLM Gateway · Admin</title>
 <style>
   :root {
-    --bg: #faf8f5; --card: #ffffff; --ink: #3a352f; --muted: #8b8177; --faint: #b5aca1;
-    --line: #e9e2d9; --accent: #b4552d; --accent-hover: #9c4a26; --accent-soft: #f5e8df;
-    --ok: #5f7f57; --ok-soft: #e9f0e6; --bad: #a94442; --bad-soft: #f6e7e5;
-    --radius: 10px; --shadow: 0 1px 3px rgba(60, 50, 40, 0.07);
+    --bg: #f5f6f8; --bg-grad: #eef0f4; --card: #ffffff; --ink: #1f2430; --muted: #6b7280;
+    --faint: #9ca3af; --line: #e5e7eb; --line-soft: #f1f3f5;
+    --accent: #6366f1; --accent-hover: #4f46e5; --accent-soft: #eef2ff;
+    --ok: #16a34a; --ok-soft: #dcfce7; --bad: #dc2626; --bad-soft: #fee2e2; --warn: #d97706; --warn-soft: #fef3c7;
+    --radius: 14px; --radius-sm: 9px;
+    --shadow: 0 1px 2px rgba(16,24,40,.04), 0 6px 20px rgba(16,24,40,.06);
+    --shadow-sm: 0 1px 2px rgba(16,24,40,.06);
+  }
+  [data-theme="dark"] {
+    --bg: #0e1116; --bg-grad: #0a0d12; --card: #181c24; --ink: #e5e7eb; --muted: #9ca3af;
+    --faint: #6b7280; --line: #2a313b; --line-soft: #21262e;
+    --accent: #818cf8; --accent-hover: #a5b4fc; --accent-soft: #1e2433;
+    --ok: #22c55e; --ok-soft: #0f2e1a; --bad: #f87171; --bad-soft: #2e1518; --warn: #fbbf24; --warn-soft: #2a2118;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px rgba(0,0,0,.45);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; font-size: 14px; line-height: 1.6; }
+  body { background: linear-gradient(180deg, var(--bg) 0%, var(--bg-grad) 100%); background-attachment: fixed; color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; font-size: 14px; line-height: 1.6; min-height: 100vh; }
   a { color: var(--accent); text-decoration: none; }
-  .topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; background: rgba(250, 248, 245, 0.92); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
-  .brand { font-size: 16px; font-weight: 700; letter-spacing: 0.3px; }
-  .brand span { color: var(--accent); font-weight: 600; margin-left: 4px; }
-  .top-actions { display: flex; align-items: center; gap: 10px; }
-  .pill { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; background: var(--card); }
-  .pill.on { color: var(--ok); border-color: #cfdccc; background: var(--ok-soft); }
-  .pill.warn { color: var(--bad); border-color: #e6c9c7; background: var(--bad-soft); }
-  main { max-width: 1080px; margin: 0 auto; padding: 24px 20px 60px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px 22px; margin-bottom: 22px; }
-  .card h2 { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  .icon { width: 16px; height: 16px; vertical-align: -3px; }
+  .topbar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; background: color-mix(in srgb, var(--card) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .brand { font-size: 16px; font-weight: 750; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; }
+  .brand .dotmark { width: 9px; height: 9px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), #ec4899); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .top-actions { display: flex; align-items: center; gap: 8px; }
+  .pill { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 3px 11px; background: var(--card); display: inline-flex; align-items: center; gap: 5px; }
+  .pill.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); background: var(--ok-soft); }
+  .pill.warn { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); background: var(--bad-soft); }
+  .iconbtn { appearance: none; border: 1px solid var(--line); background: var(--card); color: var(--muted); width: 34px; height: 34px; border-radius: 9px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: all .15s; }
+  .iconbtn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .tabs { position: sticky; top: 59px; z-index: 20; display: flex; gap: 2px; padding: 0 24px; background: color-mix(in srgb, var(--card) 80%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .tab { appearance: none; border: none; background: transparent; color: var(--muted); font: inherit; font-size: 13.5px; font-weight: 550; padding: 13px 16px; cursor: pointer; position: relative; white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; transition: color .15s; }
+  .tab:hover { color: var(--ink); }
+  .tab.active { color: var(--accent); }
+  .tab.active::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: var(--accent); border-radius: 2px; }
+  .tab .badge { font-size: 10px; background: var(--bad); color: #fff; border-radius: 999px; padding: 0 5px; min-width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; }
+  main { max-width: 1040px; margin: 0 auto; padding: 22px 20px 90px; }
+  .panel { display: none; }
+  .panel.active { display: block; animation: fade .2s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px 22px; margin-bottom: 18px; }
+  .card h2 { font-size: 15px; font-weight: 700; margin-bottom: 3px; display: flex; align-items: center; gap: 8px; }
   .card .desc { color: var(--muted); font-size: 12.5px; margin-bottom: 16px; }
   .section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
-  .btn { appearance: none; border: none; cursor: pointer; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 8px; transition: background 0.15s ease; }
-  .btn:hover { background: var(--accent-hover); }
-  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  .btn { appearance: none; border: none; cursor: pointer; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; padding: 9px 18px; border-radius: 10px; transition: all .15s; display: inline-flex; align-items: center; gap: 6px; }
+  .btn:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+  .btn:active { transform: none; }
   .btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
   .btn.ghost:hover { background: var(--accent-soft); }
-  .btn.small { padding: 4px 12px; font-size: 12.5px; }
+  .btn.subtle { background: var(--accent-soft); color: var(--accent-hover); }
+  .btn.subtle:hover { background: color-mix(in srgb, var(--accent-soft) 70%, var(--accent) 15%); }
+  .btn.small { padding: 6px 13px; font-size: 12.5px; border-radius: 8px; }
   .btn.danger { background: var(--bad); }
-  .btn.danger:hover { background: #8e3a39; }
-  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-  .seg button { appearance: none; border: none; background: var(--card); color: var(--muted); font-size: 12.5px; padding: 5px 14px; cursor: pointer; }
-  .seg button.active { background: var(--accent); color: #fff; }
-  select, input[type="password"], input[type="text"], input[type="number"], textarea { font: inherit; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: var(--card); outline: none; width: 100%; }
-  select:focus, input:focus, textarea:focus { border-color: var(--accent); }
-  textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; resize: vertical; }
+  .btn.danger:hover { background: color-mix(in srgb, var(--bad) 85%, #000); }
+  .btn.danger.ghost { background: transparent; color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+  .btn.danger.ghost:hover { background: var(--bad-soft); }
+  .seg { display: inline-flex; background: var(--line-soft); border-radius: 10px; padding: 3px; gap: 2px; }
+  .seg button { appearance: none; border: none; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 550; padding: 6px 14px; cursor: pointer; border-radius: 7px; transition: all .15s; }
+  .seg button.active { background: var(--card); color: var(--ink); box-shadow: var(--shadow-sm); }
+  select, input[type="password"], input[type="text"], input[type="number"], textarea { font: inherit; color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; background: var(--card); outline: none; width: 100%; transition: border .15s, box-shadow .15s; }
+  select:focus, input:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; resize: vertical; line-height: 1.5; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; font-size: 12px; white-space: nowrap; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
   tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--line-soft); }
   td.mono, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
-  .chip { display: inline-block; margin: 2px 4px 2px 0; padding: 1px 9px; border-radius: 999px; font-size: 12px; background: var(--accent-soft); color: var(--accent-hover); }
-  .chip.gray { background: #f1ede7; color: var(--muted); }
+  .chip { display: inline-block; margin: 2px 4px 2px 0; padding: 2px 10px; border-radius: 999px; font-size: 11.5px; background: var(--accent-soft); color: var(--accent-hover); font-weight: 500; }
+  .chip.gray { background: var(--line-soft); color: var(--muted); }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
-  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); } .dot.unknown { background: var(--faint); }
-  .empty { color: var(--faint); font-size: 13px; padding: 18px 0; text-align: center; }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+  .dot.bad { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-soft); }
+  .dot.unknown { background: var(--faint); }
+  .empty { color: var(--faint); font-size: 13px; padding: 26px 0; text-align: center; }
   .error-text { color: var(--bad); font-size: 13px; }
-  .authbar { display: none; align-items: center; gap: 8px; padding: 10px 24px; background: var(--bad-soft); border-bottom: 1px solid #e6c9c7; }
-  .authbar input { max-width: 320px; }
-  .switch { position: relative; display: inline-block; width: 42px; height: 24px; vertical-align: middle; }
+  .switch { position: relative; display: inline-block; width: 42px; height: 24px; vertical-align: middle; flex-shrink: 0; }
   .switch input { opacity: 0; width: 0; height: 0; }
-  .slider { position: absolute; cursor: pointer; inset: 0; background: #ccc; border-radius: 24px; transition: 0.2s; }
-  .slider:before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: 0.2s; }
-  .switch input:checked + .slider { background: var(--ok); }
+  .slider { position: absolute; cursor: pointer; inset: 0; background: var(--faint); border-radius: 24px; transition: .2s; opacity: .6; }
+  .slider:before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; box-shadow: var(--shadow-sm); }
+  .switch input:checked + .slider { background: var(--ok); opacity: 1; }
   .switch input:checked + .slider:before { transform: translateX(18px); }
-  .subcard { border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 12px; background: #fdfbf8; }
-  .subcard h3 { font-size: 13px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .field { margin-bottom: 8px; }
-  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  .subcard { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 10px; background: var(--card); overflow: hidden; transition: border .15s; }
+  .subcard:hover { border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); }
+  .subcard > .sc-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; user-select: none; }
+  .subcard > .sc-head:hover { background: var(--line-soft); }
+  .subcard .chev { color: var(--faint); transition: transform .2s; flex-shrink: 0; }
+  .subcard.open .chev { transform: rotate(90deg); }
+  .subcard .sc-body { display: none; padding: 4px 14px 14px; border-top: 1px solid var(--line-soft); }
+  .subcard.open .sc-body { display: block; }
+  .sc-title { font-weight: 650; font-size: 13.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sc-meta { font-size: 11.5px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 720px) { .grid2, .grid4 { grid-template-columns: 1fr; } }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 11.5px; color: var(--muted); margin-bottom: 4px; font-weight: 550; text-transform: uppercase; letter-spacing: .03em; }
   .row-inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity 0.3s; z-index: 50; }
-  .toast.show { opacity: 0.95; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .stat .lbl { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; font-weight: 550; }
+  .stat .val { font-size: 22px; font-weight: 700; margin-top: 4px; letter-spacing: -.02em; }
+  .stat .sub { font-size: 11.5px; color: var(--faint); margin-top: 2px; }
+  .savebar { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%) translateY(80px); z-index: 40; display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 18px; background: var(--ink); color: #fff; border-radius: 999px; box-shadow: 0 8px 30px rgba(16,24,40,.25); transition: transform .25s cubic-bezier(.2,.8,.2,1); }
+  [data-theme="dark"] .savebar { background: #2a313b; border: 1px solid var(--line); }
+  .savebar.show { transform: translateX(-50%) translateY(0); }
+  .savebar .txt { font-size: 13px; font-weight: 550; display: flex; align-items: center; gap: 7px; }
+  .savebar .txt .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 0 var(--warn); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn) 60%, transparent); } 70% { box-shadow: 0 0 0 8px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--ink); color: #fff; padding: 11px 20px; border-radius: 10px; font-size: 13px; font-weight: 500; opacity: 0; transition: all .25s; z-index: 50; box-shadow: 0 8px 30px rgba(16,24,40,.25); }
+  .toast.show { opacity: .97; transform: translateX(-50%) translateY(0); }
   .toast.err { background: var(--bad); }
-  footer { text-align: center; color: var(--faint); font-size: 12px; padding: 20px; }
+  .overlay { position: fixed; inset: 0; z-index: 60; background: color-mix(in srgb, #000 50%, transparent); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; padding: 20px; }
+  .overlay.show { display: flex; animation: fade .2s; }
+  .modal { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 24px; max-width: 380px; width: 100%; }
+  .modal h3 { font-size: 16px; margin-bottom: 8px; }
+  .modal p { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .modal .actions { display: flex; gap: 10px; justify-content: flex-end; }
+  #auth-overlay .modal { max-width: 360px; }
+  #auth-overlay .modal h3 { display: flex; align-items: center; gap: 8px; }
+  footer { text-align: center; color: var(--faint); font-size: 12px; padding: 10px 0 0; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 4px; }
 </style>
 </head>
 <body>
 <div class="topbar">
-  <div class="brand">LLM <span>Gateway</span> <span data-i18n="admin_console"></span></div>
+  <div class="brand"><span class="dotmark"></span> LLM <span style="color:var(--accent)">Gateway</span></div>
   <div class="top-actions">
     <span id="auth-pill" class="pill" data-i18n="checking"></span>
-    <button id="btn-lang" class="btn ghost small">中文</button>
-    <button id="btn-refresh" class="btn ghost small" data-i18n="refresh"></button>
+    <button id="btn-lang" class="iconbtn" title="Language">EN</button>
+    <button id="btn-theme" class="iconbtn" title="Theme"></button>
+    <button id="btn-refresh" class="iconbtn" title="Refresh">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+    </button>
   </div>
 </div>
-
-<div id="authbar" class="authbar">
-  <span data-i18n="auth_prompt"></span>
-  <input id="auth-input" type="password" placeholder="master key">
-  <button id="auth-submit" class="btn small" data-i18n="enter"></button>
-  <span id="auth-error" class="error-text"></span>
+<div class="tabs">
+  <button class="tab active" data-tab="config"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span data-i18n="tab_config"></span><span class="badge" id="dirty-badge" style="display:none">•</span></button>
+  <button class="tab" data-tab="overview"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg><span data-i18n="tab_overview"></span></button>
+  <button class="tab" data-tab="usage"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg><span data-i18n="tab_usage"></span></button>
+  <button class="tab" data-tab="test"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 2h6"/><path d="M10 2v6.5L5 18a2 2 0 0 0 1.8 3h10.4A2 2 0 0 0 19 18l-5-9.5V2"/><path d="M8 14h8"/></svg><span data-i18n="tab_test"></span></button>
 </div>
 
-<main id="app">
-  <div class="card">
-    <h2 data-i18n="config_editor"></h2>
-    <div class="desc" data-i18n="config_editor_desc"></div>
-    <div id="editor"></div>
-  </div>
-
-  <div class="card">
-    <div class="section-head">
-      <h2 data-i18n="overview"></h2>
-      <button id="btn-health" class="btn ghost small" data-i18n="health_check"></button>
+<main>
+  <div class="panel active" id="panel-config">
+    <div class="card">
+      <h2 data-i18n="auth_and_limit"></h2>
+      <div class="desc" data-i18n="auth_desc"></div>
+      <div id="auth-editor"></div>
     </div>
-    <div id="server-info"></div>
-    <h3 style="margin:16px 0 8px;font-size:13px;">Providers</h3>
-    <div id="providers-wrap"></div>
-    <h3 style="margin:16px 0 8px;font-size:13px;" data-i18n="aliases"></h3>
-    <div id="aliases-wrap"></div>
+    <div class="card">
+      <div class="section-head"><h2>Providers</h2><button class="btn subtle small" id="add-prov"><span data-i18n="add_provider"></span></button></div>
+      <div id="prov-list"></div>
+    </div>
+    <div class="card">
+      <div class="section-head"><h2 data-i18n="aliases"></h2><button class="btn subtle small" id="add-alias"><span data-i18n="add_alias"></span></button></div>
+      <div id="alias-list"></div>
+    </div>
+    <div class="card">
+      <div class="section-head"><h2>MOA</h2><button class="btn subtle small" id="add-moa"><span data-i18n="add_pipeline"></span></button></div>
+      <div id="moa-list"></div>
+    </div>
   </div>
 
-  <div class="card">
-    <div class="section-head">
-      <h2 data-i18n="usage_dashboard"></h2>
-      <div class="seg" id="days-seg">
-        <button data-days="1">1d</button>
-        <button data-days="7" class="active">7d</button>
-        <button data-days="30">30d</button>
+  <div class="panel" id="panel-overview">
+    <div class="card">
+      <div class="section-head"><h2 data-i18n="overview"></h2><button class="btn ghost small" id="btn-health"><span data-i18n="health_check"></span></button></div>
+      <div id="server-info"></div>
+      <h3 style="margin:18px 0 8px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;">Providers</h3>
+      <div id="providers-wrap"></div>
+      <h3 style="margin:18px 0 8px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;" data-i18n="aliases"></h3>
+      <div id="aliases-wrap"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-usage">
+    <div class="card">
+      <div class="section-head"><h2 data-i18n="usage_dashboard"></h2>
+        <div class="seg" id="days-seg"><button data-days="1">1d</button><button data-days="7" class="active">7d</button><button data-days="30">30d</button></div>
       </div>
+      <div class="grid4" id="usage-tiles"></div>
+      <h3 style="margin:18px 0 8px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;" data-i18n="by_model"></h3>
+      <div id="usage-by-model"></div>
     </div>
-    <div id="usage-summary"></div>
-    <h3 style="margin:16px 0 8px;font-size:13px;" data-i18n="recent_calls"></h3>
-    <div id="usage-recent"></div>
+    <div class="card">
+      <h2 data-i18n="recent_calls"></h2>
+      <div id="usage-recent" style="margin-top:10px;"></div>
+    </div>
   </div>
 
-  <div class="card">
-    <h2 data-i18n="model_test"></h2>
-    <div class="desc" data-i18n="model_test_desc"></div>
-    <div class="row-inline" style="margin-bottom:10px;">
-      <select id="model-select" style="max-width:360px;"><option value="" data-i18n="loading"></option></select>
-      <button id="btn-test" class="btn" data-i18n="send_test"></button>
+  <div class="panel" id="panel-test">
+    <div class="card">
+      <h2 data-i18n="model_test"></h2>
+      <div class="desc" data-i18n="model_test_desc"></div>
+      <div class="row-inline" style="margin-bottom:12px;">
+        <select id="model-select" style="max-width:420px;"><option value="" data-i18n="loading"></option></select>
+        <button id="btn-test" class="btn" data-i18n="send_test"></button>
+      </div>
+      <div id="test-result"></div>
     </div>
-    <div id="test-result"></div>
   </div>
+  <footer data-i18n="footer"></footer>
 </main>
 
-<footer data-i18n="footer"></footer>
-<div id="toast" class="toast"></div>
+<div class="savebar" id="savebar">
+  <span class="txt"><span class="pulse"></span><span data-i18n="unsaved"></span></span>
+  <button class="btn small ghost" id="btn-discard" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)"><span data-i18n="discard"></span></button>
+  <button class="btn small" id="btn-save" style="background:#fff;color:var(--ink)"><span data-i18n="save"></span></button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="overlay" id="confirm-overlay">
+  <div class="modal">
+    <h3 id="confirm-title"></h3>
+    <p id="confirm-msg"></p>
+    <div class="actions">
+      <button class="btn ghost" id="confirm-cancel" data-i18n="cancel"></button>
+      <button class="btn danger" id="confirm-ok" data-i18n="confirm"></button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="auth-overlay">
+  <div class="modal">
+    <h3><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span data-i18n="auth_title"></span></h3>
+    <p data-i18n="auth_prompt"></p>
+    <input id="auth-input" type="password" placeholder="master key" style="margin-bottom:14px;">
+    <div class="actions"><button class="btn" id="auth-submit" data-i18n="enter"></button></div>
+  </div>
+</div>
 
 <script>
 (function () {
   "use strict";
-  var LS_KEY = "llm_gateway_master_key";
-  var LS_LANG = "llm_gateway_lang";
+  var LS_KEY = "llm_gateway_master_key", LS_LANG = "llm_gateway_lang", LS_THEME = "llm_gateway_theme";
   var LANG = localStorage.getItem(LS_LANG) || "en";
+  var THEME = localStorage.getItem(LS_THEME) || (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   var masterKey = localStorage.getItem(LS_KEY) || "";
-  var currentDays = 7;
-  var raw = null;
+  var currentDays = 7, raw = null, dirty = false, currentTab = "config";
+  var expanded = { prov: new Set(), moa: new Set() };
   var $ = function (s) { return document.querySelector(s); };
+  var $$ = function (s) { return Array.prototype.slice.call(document.querySelectorAll(s)); };
 
   var I18N = {
     en: {
-      admin_console: "Admin", checking: "Checking…", refresh: "Refresh", enter: "Enter",
-      auth_prompt: "Auth is on. Enter the master key to continue:", invalid_key: "Key invalid or expired, please re-enter",
-      config_editor: "Config Editor", config_editor_desc: "Add/edit/delete providers, models, aliases, MOA, rate limit and auth directly in the console. Changes hot-reload on save (no restart). Keys stay only in the local config.yaml.",
-      overview: "Overview", health_check: "Health Check", aliases: "Aliases",
-      usage_dashboard: "Usage Dashboard", recent_calls: "Recent Calls", model_test: "Model Test",
-      model_test_desc: "Sends \"Say hi in one word\" through the gateway to verify the model link.", loading: "Loading…",
-      send_test: "Send Test", footer: "llm-gateway · local admin console · data stays on this machine",
-      auth_on: "Auth on", auth_off: "No auth", no_auth: "unauthenticated", pick_model: "Please pick a model",
-      testing: "Testing…", save: "Save Config", saving: "Saving…", save_fail: "Save failed: ", saved: "Config saved and hot-reloaded",
-      auth_and_limit: "Auth & Rate Limit", auth_toggle_lbl: "Enable API auth (master_key); when off, both the console and /v1/* are unauthenticated (local only)",
-      master_key_lbl: "Master Key (empty = auto-generate)", rpm_lbl: "Rate limit: requests/min per caller key (0 = unlimited)",
-      add_provider: "+ Add Provider", add_alias: "+ Add Alias", add_pipeline: "+ Add Pipeline",
-      no_provider: "No provider configured", no_alias: "No alias configured",
-      no_moa: "No MOA pipeline configured (trigger with model moa:<name>)",
-      type: "Type", base_url: "Base URL", keys_per_line: "Keys (one per line)", models_per_line: "Models (one per line)",
-      supports_responses_lbl: "Upstream natively supports /v1/responses (passthrough fast path)",
-      delete: "Delete", del: "Del", add_proposer: "+ proposer", pick_provider: "(pick provider)", proposers: "Proposers",
-      agg_provider: "Aggregator Provider", agg_model: "Aggregator Model", agg_prompt: "Synthesis prompt (optional)",
-      listen: "Listen", master_key: "Master Key", no_key_set: "not set (no auth)", rate_limit: "Rate Limit",
-      per_min: " req/min/key", no_limit: "unlimited", not_checked: "not checked", ok_all: "all ok",
-      calls: "Calls", total_tokens: "Total Tokens", prompt: "Prompt", completion: "Completion",
-      avg_latency: "Avg Latency", success_rate: "Success Rate", by_model: "By Model",
-      col_model: "Model", col_count: "Calls", col_latency: "Latency", col_provider: "Provider",
-      col_time: "Time", col_status: "Status", col_stream: "Stream", no_records: "No calls yet",
-      yes: "yes", no: "no", reply: "Reply", fail: "Failed", no_models: "(no models available)",
-      enter_master_key: "Please enter the master key", health_fail: "Health check failed",
-      router: "Route", col_health: "Health", col_keypool: "Key pool"
+      checking: "Checking…", auth_title: "Authentication required", auth_prompt: "Auth is on. Enter the master key to continue.",
+      invalid_key: "Key invalid or expired, please re-enter.", enter: "Enter", tab_config: "Config", tab_overview: "Overview",
+      tab_usage: "Usage", tab_test: "Test", auth_and_limit: "Auth & Rate Limit", auth_desc: "Toggle API auth and rate limit. Changes apply on save.",
+      auth_toggle_lbl: "Enable API auth (master_key); when off, both the console and /v1/* are unauthenticated (local only)",
+      master_key_lbl: "Master Key", gen_key: "Generate", rpm_lbl: "Requests / min per caller key (0 = unlimited)",
+      add_provider: "Add provider", add_alias: "Add alias", add_pipeline: "Add pipeline", no_provider: "No provider configured",
+      no_alias: "No alias configured", no_moa: "No MOA pipeline. Trigger with model moa:<name>.", type: "Type", base_url: "Base URL",
+      keys_per_line: "Keys (one per line)", models_per_line: "Models (one per line)", supports_responses_lbl: "Natively supports /v1/responses (passthrough)",
+      delete: "Delete", del: "Delete", add_proposer: "Add proposer", pick_provider: "(pick provider)", proposers: "Proposers",
+      agg_provider: "Aggregator provider", agg_model: "Aggregator model", agg_prompt: "Synthesis prompt (optional)", aliases: "Aliases",
+      overview: "Overview", health_check: "Health check", listen: "Listen", master_key: "Master key", no_key_set: "not set (no auth)",
+      rate_limit: "Rate limit", per_min: " req/min/key", no_limit: "unlimited", not_checked: "not checked", col_health: "Health",
+      col_keypool: "Key pool", router: "Route", no_models: "(no models)", usage_dashboard: "Usage dashboard", by_model: "By model",
+      recent_calls: "Recent calls", calls: "Calls", total_tokens: "Total tokens", prompt: "Prompt", completion: "Completion",
+      avg_latency: "Avg latency", success_rate: "Success rate", col_time: "Time", col_model: "Model", col_provider: "Provider",
+      col_latency: "Latency", col_count: "Calls", col_status: "Status", col_stream: "Stream", no_records: "No calls yet", yes: "yes", no: "no",
+      model_test: "Model test", model_test_desc: "Sends \"Say hi in one word\" through the gateway to verify the link.", loading: "Loading…",
+      send_test: "Send test", testing: "Testing…", reply: "Reply", fail: "Failed", pick_model: "Pick a model", health_fail: "Health check failed",
+      unsaved: "Unsaved changes", save: "Save", discard: "Discard", cancel: "Cancel", confirm: "Confirm", confirm_delete: "Delete this item? This cannot be undone.",
+      confirm_discard: "Discard all unsaved changes?", saved: "Config saved and hot-reloaded", save_fail: "Save failed", saving: "Saving…",
+      enter_master_key: "Please enter the master key", auth_on: "Auth on", auth_off: "No auth", footer: "llm-gateway · local console · data stays on this machine",
+      models_count: "models", keys_count: "keys", expand_hint: "Click a card to expand"
     },
     zh: {
-      admin_console: "管理台", checking: "检测中…", refresh: "刷新", enter: "进入",
-      auth_prompt: "鉴权已开启，请输入 Master Key 进入：", invalid_key: "Key 无效或已失效，请重新输入",
-      config_editor: "配置编辑", config_editor_desc: "直接在控制台增删改 Provider / 模型 / 别名 / MOA / 限流 / 鉴权，保存即时热生效（无需重启）。密钥仅存于本机 config.yaml。",
-      overview: "配置总览", health_check: "健康检查", aliases: "别名",
-      usage_dashboard: "用量仪表盘", recent_calls: "最近调用", model_test: "模型测试",
-      model_test_desc: "通过网关自身向后端模型发送 “Say hi in one word”，验证链路是否可用。", loading: "加载中…",
-      send_test: "发送测试", footer: "llm-gateway · 本地管理页 · 数据仅保存在本机",
-      auth_on: "鉴权已开启", auth_off: "免鉴权", no_auth: "未认证", pick_model: "请选择模型",
-      testing: "测试中…", save: "保存配置", saving: "保存中…", save_fail: "保存失败：", saved: "配置已保存并热生效",
-      auth_and_limit: "鉴权与限流", auth_toggle_lbl: "开启 API 鉴权（master_key）；关闭后控制台与 /v1/* 均免认证（仅限本机）",
-      master_key_lbl: "Master Key（留空则自动生成）", rpm_lbl: "限流：每分钟请求数 / 调用方 key（0=不限）",
-      add_provider: "+ 添加 Provider", add_alias: "+ 添加别名", add_pipeline: "+ 添加流水线",
-      no_provider: "未配置 Provider", no_alias: "未配置别名",
-      no_moa: "未配置 MOA 流水线（model 填 moa:<name> 触发）",
-      type: "类型", base_url: "Base URL", keys_per_line: "密钥（每行一个）", models_per_line: "模型（每行一个）",
-      supports_responses_lbl: "上游原生支持 /v1/responses（透传快路径）",
-      delete: "删除", del: "删", add_proposer: "+ proposer", pick_provider: "(选 provider)", proposers: "Proposers",
-      agg_provider: "Aggregator Provider", agg_model: "Aggregator Model", agg_prompt: "综合提示（可选）",
-      listen: "监听", master_key: "Master Key", no_key_set: "未设置（免鉴权）", rate_limit: "限流",
-      per_min: " 次/分钟/key", no_limit: "不限流", not_checked: "未检测", ok_all: "三家 ok",
-      calls: "调用次数", total_tokens: "总 Token", prompt: "Prompt", completion: "Completion",
-      avg_latency: "平均延迟", success_rate: "成功率", by_model: "按模型",
-      col_model: "模型", col_count: "次数", col_latency: "延迟", col_provider: "Provider",
-      col_time: "时间", col_status: "状态", col_stream: "流式", no_records: "暂无调用记录",
-      yes: "是", no: "否", reply: "回复", fail: "失败", no_models: "(无可用模型)",
-      enter_master_key: "请输入 Master Key", health_fail: "健康检查失败",
-      router: "路由", col_health: "健康", col_keypool: "密钥池"
+      checking: "检测中…", auth_title: "需要鉴权", auth_prompt: "鉴权已开启，请输入 Master Key 继续。",
+      invalid_key: "Key 无效或已失效，请重新输入。", enter: "进入", tab_config: "配置", tab_overview: "总览",
+      tab_usage: "用量", tab_test: "测试", auth_and_limit: "鉴权与限流", auth_desc: "开关 API 鉴权与限流，保存后生效。",
+      auth_toggle_lbl: "开启 API 鉴权（master_key）；关闭后控制台与 /v1/* 均免认证（仅限本机）",
+      master_key_lbl: "Master Key", gen_key: "生成", rpm_lbl: "每分钟请求数 / 调用方 key（0=不限）",
+      add_provider: "添加 Provider", add_alias: "添加别名", add_pipeline: "添加流水线", no_provider: "未配置 Provider",
+      no_alias: "未配置别名", no_moa: "未配置 MOA 流水线，用 model moa:<name> 触发。", type: "类型", base_url: "Base URL",
+      keys_per_line: "密钥（每行一个）", models_per_line: "模型（每行一个）", supports_responses_lbl: "原生支持 /v1/responses（透传）",
+      delete: "删除", del: "删除", add_proposer: "添加 proposer", pick_provider: "(选 provider)", proposers: "Proposers",
+      agg_provider: "Aggregator provider", agg_model: "Aggregator model", agg_prompt: "综合提示（可选）", aliases: "别名",
+      overview: "总览", health_check: "健康检查", listen: "监听", master_key: "Master key", no_key_set: "未设置（免鉴权）",
+      rate_limit: "限流", per_min: " 次/分钟/key", no_limit: "不限流", not_checked: "未检测", col_health: "健康",
+      col_keypool: "密钥池", router: "路由", no_models: "(无可用模型)", usage_dashboard: "用量仪表盘", by_model: "按模型",
+      recent_calls: "最近调用", calls: "调用次数", total_tokens: "总 Token", prompt: "Prompt", completion: "Completion",
+      avg_latency: "平均延迟", success_rate: "成功率", col_time: "时间", col_model: "模型", col_provider: "Provider",
+      col_latency: "延迟", col_count: "次数", col_status: "状态", col_stream: "流式", no_records: "暂无调用记录", yes: "是", no: "否",
+      model_test: "模型测试", model_test_desc: "通过网关发送 “Say hi in one word” 验证链路。", loading: "加载中…",
+      send_test: "发送测试", testing: "测试中…", reply: "回复", fail: "失败", pick_model: "请选择模型", health_fail: "健康检查失败",
+      unsaved: "有未保存的更改", save: "保存", discard: "放弃", cancel: "取消", confirm: "确认", confirm_delete: "确认删除该项？此操作不可撤销。",
+      confirm_discard: "放弃所有未保存的更改？", saved: "配置已保存并热生效", save_fail: "保存失败", saving: "保存中…",
+      enter_master_key: "请输入 Master Key", auth_on: "鉴权已开启", auth_off: "免鉴权", footer: "llm-gateway · 本地控制台 · 数据仅存于本机",
+      models_count: "个模型", keys_count: "个密钥", expand_hint: "点击卡片展开"
     }
   };
   function t(k) { return (I18N[LANG] && I18N[LANG][k]) || I18N.en[k] || k; }
   function applyStatic() {
-    document.querySelectorAll("[data-i18n]").forEach(function(el){
-      var k = el.getAttribute("data-i18n"); if (I18N.en[k]) el.textContent = t(k);
-    });
+    $$("[data-i18n]").forEach(function(el){ var k = el.getAttribute("data-i18n"); if (I18N.en[k] && !el.dataset.i18nDyn) el.textContent = t(k); });
     document.documentElement.lang = LANG;
-    $("#btn-lang").textContent = LANG === "en" ? "中文" : "EN";
+    $("#btn-lang").textContent = LANG === "en" ? "中" : "EN";
+  }
+  function applyTheme() {
+    document.documentElement.setAttribute("data-theme", THEME);
+    $("#btn-theme").innerHTML = THEME === "dark" ? '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>' : '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
   }
 
   function esc(s) { return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
@@ -220,188 +314,170 @@
   function fmtTs(ts) { if (!ts) return "-"; var d=new Date(ts*1000), p=function(x){return String(x).padStart(2,"0");}; return (d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds()); }
   function fmtRate(r) { return (Number(r||0)*100).toFixed(1)+"%"; }
   function toast(msg, err) { var tt=$("#toast"); tt.textContent=msg; tt.className="toast show"+(err?" err":""); setTimeout(function(){tt.className="toast";}, 2200); }
+  function markDirty() { dirty = true; $("#savebar").classList.add("show"); $("#dirty-badge").style.display="inline-flex"; }
+  function clearDirty() { dirty = false; $("#savebar").classList.remove("show"); $("#dirty-badge").style.display="none"; }
+  function askConfirm(title, msg, onYes) { $("#confirm-title").textContent=title; $("#confirm-msg").textContent=msg; $("#confirm-overlay").classList.add("show");
+    var ok=$("#confirm-ok"), cc=$("#confirm-cancel"); var h1=function(){ cleanup(); onYes(); }, h2=function(){ cleanup(); };
+    function cleanup(){ $("#confirm-overlay").classList.remove("show"); ok.removeEventListener("click",h1); cc.removeEventListener("click",h2); }
+    ok.addEventListener("click",h1); cc.addEventListener("click",h2); }
 
   function api(path, options) {
-    options = options || {};
-    var headers = options.headers || {};
+    options = options || {}; var headers = options.headers || {};
     if (masterKey) headers["Authorization"] = "Bearer " + masterKey;
     if (options.json !== undefined) { headers["Content-Type"]="application/json"; options.body=JSON.stringify(options.json); delete options.json; }
     options.headers = headers;
     return fetch(path, options).then(function(resp){
-      if (resp.status === 401) { showAuthBar(t("invalid_key")); throw new Error("unauthorized"); }
+      if (resp.status === 401) { showAuth(); throw new Error("unauthorized"); }
       if (!resp.ok) { return resp.text().then(function(tx){ throw new Error("HTTP "+resp.status+": "+tx.slice(0,200)); }); }
       return resp.json();
     });
   }
+  function showAuth() { $("#auth-overlay").classList.add("show"); $("#auth-pill").textContent=t("no_auth"); $("#auth-pill").className="pill warn"; $("#auth-input").focus(); }
+  function setAuthPill(on) { if (on) { $("#auth-pill").textContent=t("auth_on"); $("#auth-pill").className="pill on"; } else { $("#auth-pill").textContent=t("auth_off"); $("#auth-pill").className="pill"; } }
 
-  function showAuthBar(msg) {
-    $("#authbar").style.display = "flex";
-    $("#auth-pill").textContent = t("no_auth"); $("#auth-pill").className = "pill warn";
-    $("#auth-error").textContent = msg || "";
-    $("#auth-input").focus();
-  }
-  function setAuthPill(on) {
-    if (on) { $("#auth-pill").textContent = t("auth_on"); $("#auth-pill").className = "pill on"; }
-    else { $("#auth-pill").textContent = t("auth_off"); $("#auth-pill").className = "pill"; }
-  }
-
-  $("#btn-lang").addEventListener("click", function(){
-    LANG = (LANG === "en") ? "zh" : "en"; localStorage.setItem(LS_LANG, LANG);
-    applyStatic(); if (raw) { renderEditor(); } loadOverview(); loadUsage();
-  });
-  $("#auth-submit").addEventListener("click", function(){
-    var v = $("#auth-input").value.trim();
-    if (!v) { $("#auth-error").textContent = t("enter_master_key"); return; }
-    masterKey = v; localStorage.setItem(LS_KEY, v);
-    $("#authbar").style.display = "none"; $("#auth-input").value = "";
-    init();
-  });
-  $("#auth-input").addEventListener("keydown", function(e){ if (e.key==="Enter") $("#auth-submit").click(); });
-  $("#btn-refresh").addEventListener("click", init);
+  $("#btn-lang").addEventListener("click", function(){ LANG = (LANG==="en")?"zh":"en"; localStorage.setItem(LS_LANG,LANG); applyStatic(); if(raw){renderAuth();renderProvList();renderAliasList();renderMoaList();} loadOverview(); loadUsage(); });
+  $("#btn-theme").addEventListener("click", function(){ THEME = THEME==="dark"?"light":"dark"; localStorage.setItem(LS_THEME,THEME); applyTheme(); });
+  $("#auth-submit").addEventListener("click", function(){ var v=$("#auth-input").value.trim(); if(!v){ toast(t("enter_master_key"),true); return; } masterKey=v; localStorage.setItem(LS_KEY,v); $("#auth-overlay").classList.remove("show"); $("#auth-input").value=""; init(); });
+  $("#auth-input").addEventListener("keydown", function(e){ if(e.key==="Enter") $("#auth-submit").click(); });
+  $("#btn-refresh").addEventListener("click", function(){ if(dirty){ askConfirm(t("discard"), t("confirm_discard"), init); } else init(); });
+  $$(".tab").forEach(function(b){ b.addEventListener("click", function(){ $$(".tab").forEach(function(x){x.classList.remove("active");}); b.classList.add("active"); currentTab=b.dataset.tab; $$(".panel").forEach(function(p){p.classList.remove("active");}); $("#panel-"+currentTab).classList.add("active"); if(currentTab==="overview") loadOverview(); if(currentTab==="usage") loadUsage(); }); });
 
   function init() {
-    api("/admin/api/config/raw").then(function(cfg){
-      raw = cfg;
-      $("#authbar").style.display = "none";
-      setAuthPill(!!(cfg.server && cfg.server.master_key));
-      renderEditor(); loadOverview(); loadUsage();
-    }).catch(function(){});
+    api("/admin/api/config/raw").then(function(cfg){ raw=cfg; $("#auth-overlay").classList.remove("show"); setAuthPill(!!(cfg.server&&cfg.server.master_key)); clearDirty(); renderAuth(); renderProvList(); renderAliasList(); renderMoaList(); loadOverview(); loadUsage(); }).catch(function(){});
+  }
+  function ensureSections(){ raw.server=raw.server||{}; raw.providers=raw.providers||{}; raw.aliases=raw.aliases||{}; raw.moa=raw.moa||{}; raw.rate_limit=raw.rate_limit||{}; }
+
+  function renderAuth() {
+    ensureSections(); var s=raw.server||{}, rl=raw.rate_limit||{}, authOn=!!s.master_key;
+    var h='<div class="row-inline" style="margin-bottom:12px;"><label class="switch"><input id="ed-auth" type="checkbox" '+(authOn?'checked':'')+'><span class="slider"></span></label><span style="font-size:13px;">'+t("auth_toggle_lbl")+'</span></div>';
+    h+='<div id="ed-key-wrap" class="grid2" style="'+(authOn?'':'display:none;')+'"><div class="field" style="margin:0;"><label>'+t("master_key_lbl")+'</label><div class="row-inline"><input id="ed-key" type="text" placeholder="sk-gw-..." value="'+esc(s.master_key||"")+'"><button class="btn subtle small" id="ed-genkey">'+t("gen_key")+'</button></div></div>';
+    h+='<div class="field" style="margin:0;"><label>'+t("rpm_lbl")+'</label><input id="ed-rpm" type="number" value="'+esc(rl.requests_per_minute||0)+'"></div></div>';
+    $("#auth-editor").innerHTML=h;
+    $("#ed-auth").addEventListener("change", function(){ $("#ed-key-wrap").style.display=this.checked?"":"none"; markDirty(); });
+    $("#ed-genkey").addEventListener("click", function(){ $("#ed-key").value="sk-gw-"+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2); markDirty(); });
+    $("#ed-key").addEventListener("input", markDirty); $("#ed-rpm").addEventListener("input", markDirty);
   }
 
-  function ensureSections() { raw.server=raw.server||{}; raw.providers=raw.providers||{}; raw.aliases=raw.aliases||{}; raw.moa=raw.moa||{}; raw.rate_limit=raw.rate_limit||{}; }
-  function renderEditor() {
-    ensureSections();
-    var s = raw.server || {}, rl = raw.rate_limit || {}, authOn = !!s.master_key;
-    var html = '';
-    html += '<div class="subcard"><h3>'+t("auth_and_limit")+'</h3>';
-    html += '<div class="row-inline" style="margin-bottom:10px;">';
-    html += '<label class="switch"><input id="ed-auth" type="checkbox" '+(authOn?'checked':'')+'><span class="slider"></span></label>';
-    html += '<span>'+t("auth_toggle_lbl")+'</span></div>';
-    html += '<div class="field" id="ed-key-wrap" '+(authOn?'':'style="display:none;"')+'>';
-    html += '<label>'+t("master_key_lbl")+'</label>';
-    html += '<input id="ed-key" type="text" placeholder="sk-gw-..." value="'+esc(s.master_key||"")+'"></div>';
-    html += '<div class="field"><label>'+t("rpm_lbl")+'</label>';
-    html += '<input id="ed-rpm" type="number" value="'+esc(rl.requests_per_minute||0)+'"></div></div>';
-
-    html += '<div class="subcard"><h3>Providers <button class="btn small" id="add-prov">'+t("add_provider")+'</button></h3><div id="prov-list"></div></div>';
-    html += '<div class="subcard"><h3>'+t("aliases")+' <button class="btn small" id="add-alias">'+t("add_alias")+'</button></h3><div id="alias-list"></div></div>';
-    html += '<div class="subcard"><h3>MOA <button class="btn small" id="add-moa">'+t("add_pipeline")+'</button></h3><div id="moa-list"></div></div>';
-    html += '<div class="row-inline" style="margin-top:6px;"><button class="btn" id="btn-save">'+t("save")+'</button><span class="error-text" id="save-msg"></span></div>';
-    $("#editor").innerHTML = html;
-    renderProvList(); renderAliasList(); renderMoaList();
-    $("#ed-auth").addEventListener("change", function(){ $("#ed-key-wrap").style.display = this.checked ? "" : "none"; });
-    $("#add-prov").addEventListener("click", function(){ var n="provider_"+Date.now(); raw.providers[n]={type:"openai_like",base_url:"",keys:[],models:[],supports_responses:false}; renderProvList(); });
-    $("#add-alias").addEventListener("click", function(){ var n="alias_"+Date.now(); raw.aliases[n]="provider/model"; renderAliasList(); });
-    $("#add-moa").addEventListener("click", function(){ var n="pipeline_"+Date.now(); raw.moa[n]={proposers:[{provider:"",model:""}],aggregator:{provider:"",model:""}}; renderMoaList(); });
-    $("#btn-save").addEventListener("click", saveConfig);
-  }
-  function provNames() { return Object.keys(raw.providers||{}); }
+  function provNames(){ return Object.keys(raw.providers||{}); }
   function renderProvList() {
-    var names = provNames();
-    if (!names.length) { $("#prov-list").innerHTML = '<div class="empty">'+t("no_provider")+'</div>'; return; }
-    var h = '';
-    names.forEach(function(name){ var p = raw.providers[name] || {};
-      h += '<div class="subcard" data-prov="'+esc(name)+'"><h3><input class="ed-pname" data-old="'+esc(name)+'" type="text" value="'+esc(name)+'" style="max-width:200px;display:inline-block;"><button class="btn danger small ed-pdel">'+t("delete")+'</button></h3>';
-      h += '<div class="grid2"><div class="field"><label>'+t("type")+'</label><select class="ed-ptype">'+['openai_like','anthropic','gemini'].map(function(tt){return '<option '+((p.type||'openai_like')===tt?'selected':'')+'>'+tt+'</option>';}).join('')+'</select></div>';
-      h += '<div class="field"><label>'+t("base_url")+'</label><input class="ed-purl" type="text" value="'+esc(p.base_url||'')+'"></div></div>';
-      h += '<div class="field"><label>'+t("keys_per_line")+'</label><textarea class="ed-pkeys" rows="2">'+esc((p.keys||[]).join('\n'))+'</textarea></div>';
-      h += '<div class="field"><label>'+t("models_per_line")+'</label><textarea class="ed-pmodels" rows="2">'+esc((p.models||[]).join('\n'))+'</textarea></div>';
-      h += '<div class="row-inline"><label class="switch"><input class="ed-pres" type="checkbox" '+(p.supports_responses?'checked':'')+'><span class="slider"></span></label><span>'+t("supports_responses_lbl")+'</span></div></div>';
+    var names=provNames();
+    if(!names.length){ $("#prov-list").innerHTML='<div class="empty">'+t("no_provider")+'</div>'; return; }
+    var h="";
+    names.forEach(function(name){ var p=raw.providers[name]||{}; var open=expanded.prov.has(name);
+      h+='<div class="subcard '+(open?'open':'')+'" data-prov="'+esc(name)+'"><div class="sc-head"><svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg><span class="sc-title">'+esc(name)+'</span><span class="sc-meta"><span class="chip gray">'+esc(p.type||"openai_like")+'</span>'+(p.models||[]).length+' '+t("models_count")+' · '+(p.keys||[]).length+' '+t("keys_count")+'</span><button class="btn danger ghost small ed-pdel" data-name="'+esc(name)+'">'+t("del")+'</button></div>';
+      h+='<div class="sc-body"><div class="field"><label>Name</label><input class="ed-pname" type="text" value="'+esc(name)+'" style="max-width:240px;"></div><div class="grid2"><div class="field"><label>'+t("type")+'</label><select class="ed-ptype">'+['openai_like','anthropic','gemini'].map(function(tt){return '<option '+((p.type||'openai_like')===tt?'selected':'')+'>'+tt+'</option>';}).join('')+'</select></div><div class="field"><label>'+t("base_url")+'</label><input class="ed-purl" type="text" value="'+esc(p.base_url||'')+'"></div></div>';
+      h+='<div class="field"><label>'+t("keys_per_line")+'</label><textarea class="ed-pkeys" rows="2">'+esc((p.keys||[]).join('\n'))+'</textarea></div>';
+      h+='<div class="field"><label>'+t("models_per_line")+'</label><textarea class="ed-pmodels" rows="2">'+esc((p.models||[]).join('\n'))+'</textarea></div>';
+      h+='<div class="row-inline"><label class="switch"><input class="ed-pres" type="checkbox" '+(p.supports_responses?'checked':'')+'><span class="slider"></span></label><span style="font-size:13px;">'+t("supports_responses_lbl")+'</span></div></div></div>';
     });
-    $("#prov-list").innerHTML = h;
+    $("#prov-list").innerHTML=h;
+    $$("#prov-list .subcard").forEach(function(sc){
+      var name=sc.getAttribute("data-prov");
+      sc.querySelector(".sc-head").addEventListener("click", function(e){ if(e.target.closest("button")) return; if(expanded.prov.has(name)){expanded.prov.delete(name);sc.classList.remove("open");}else{expanded.prov.add(name);sc.classList.add("open");} });
+      sc.querySelector(".ed-pdel").addEventListener("click", function(){ var n=name; askConfirm(t("delete"), t("confirm_delete"), function(){ delete raw.providers[n]; expanded.prov.delete(n); renderProvList(); markDirty(); }); });
+    });
   }
   function renderAliasList() {
-    var names = Object.keys(raw.aliases||{});
-    if (!names.length) { $("#alias-list").innerHTML = '<div class="empty">'+t("no_alias")+'</div>'; return; }
-    var h = '';
-    names.forEach(function(a){ h += '<div class="row-inline" data-alias="'+esc(a)+'" style="margin-bottom:6px;"><input class="ed-aname" data-old="'+esc(a)+'" type="text" value="'+esc(a)+'" style="max-width:180px;"><span>-&gt;</span><input class="ed-atarget" type="text" value="'+esc(raw.aliases[a]||'')+'" placeholder="provider/model"><button class="btn danger small ed-adel">'+t("delete")+'</button></div>'; });
-    $("#alias-list").innerHTML = h;
+    var names=Object.keys(raw.aliases||{});
+    if(!names.length){ $("#alias-list").innerHTML='<div class="empty">'+t("no_alias")+'</div>'; return; }
+    var h="";
+    names.forEach(function(a){ h+='<div class="row-inline" data-alias="'+esc(a)+'" style="margin-bottom:8px;"><input class="ed-aname" type="text" value="'+esc(a)+'" style="max-width:200px;"><span style="color:var(--faint)">→</span><input class="ed-atarget" type="text" value="'+esc(raw.aliases[a]||'')+'" placeholder="provider/model" style="flex:1;"><button class="btn danger ghost small ed-adel">'+t("del")+'</button></div>'; });
+    $("#alias-list").innerHTML=h;
+    $$("#alias-list .row-inline").forEach(function(r){ r.querySelector(".ed-adel").addEventListener("click", function(){ var a=r.getAttribute("data-alias"); askConfirm(t("delete"), t("confirm_delete"), function(){ delete raw.aliases[a]; renderAliasList(); markDirty(); }); }); });
   }
   function renderMoaList() {
-    var names = Object.keys(raw.moa||{});
-    if (!names.length) { $("#moa-list").innerHTML = '<div class="empty">'+t("no_moa")+'</div>'; return; }
-    var pn = provNames();
-    function provOpts(sel){ return '<option value="">'+t("pick_provider")+'</option>'+pn.map(function(n){return '<option '+(sel===n?'selected':'')+'>'+esc(n)+'</option>';}).join(''); }
-    var h = '';
-    names.forEach(function(n){ var m = raw.moa[n] || {};
-      h += '<div class="subcard" data-moa="'+esc(n)+'"><h3><input class="ed-mname" data-old="'+esc(n)+'" type="text" value="'+esc(n)+'" style="max-width:200px;display:inline-block;"><button class="btn danger small ed-mdel">'+t("delete")+'</button></h3>';
-      h += '<div class="field"><label>'+t("proposers")+'</label><div class="ed-props">';
-      (m.proposers||[]).forEach(function(pr, i){ h += '<div class="row-inline" style="margin-bottom:4px;" data-pi="'+i+'"><select class="ed-pprov">'+provOpts(pr.provider)+'</select><input class="ed-pmodel" type="text" value="'+esc(pr.model||'')+'" placeholder="model" style="max-width:220px;"><button class="btn danger small ed-ppdel">'+t("del")+'</button></div>'; });
-      h += '</div><button class="btn ghost small ed-ppadd">'+t("add_proposer")+'</button></div>';
-      var ag = m.aggregator || {};
-      h += '<div class="grid2"><div class="field"><label>'+t("agg_provider")+'</label><select class="ed-agprov">'+provOpts(ag.provider)+'</select></div><div class="field"><label>'+t("agg_model")+'</label><input class="ed-agmodel" type="text" value="'+esc(ag.model||'')+'"></div></div>';
-      h += '<div class="field"><label>'+t("agg_prompt")+'</label><textarea class="ed-agprompt" rows="2">'+esc(m.aggregator_prompt||'')+'</textarea></div></div>';
+    var names=Object.keys(raw.moa||{});
+    if(!names.length){ $("#moa-list").innerHTML='<div class="empty">'+t("no_moa")+'</div>'; return; }
+    var pn=provNames();
+    function opts(sel){ return '<option value="">'+t("pick_provider")+'</option>'+pn.map(function(n){return '<option '+(sel===n?'selected':'')+'>'+esc(n)+'</option>';}).join(''); }
+    var h="";
+    names.forEach(function(n){ var m=raw.moa[n]||{}; var open=expanded.moa.has(n);
+      h+='<div class="subcard '+(open?'open':'')+'" data-moa="'+esc(n)+'"><div class="sc-head"><svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg><span class="sc-title">moa:'+esc(n)+'</span><span class="sc-meta">'+(m.proposers||[]).length+' proposers</span><button class="btn danger ghost small ed-mdel">'+t("del")+'</button></div>';
+      h+='<div class="sc-body"><div class="field"><label>Name</label><input class="ed-mname" type="text" value="'+esc(n)+'" style="max-width:240px;"></div><div class="field"><label>'+t("proposers")+'</label><div class="ed-props">';
+      (m.proposers||[]).forEach(function(pr,i){ h+='<div class="row-inline" style="margin-bottom:6px;" data-pi="'+i+'"><select class="ed-pprov" style="max-width:180px;">'+opts(pr.provider)+'</select><input class="ed-pmodel" type="text" value="'+esc(pr.model||'')+'" placeholder="model" style="flex:1;max-width:240px;"><button class="btn danger ghost small ed-ppdel">'+t("del")+'</button></div>'; });
+      h+='</div><button class="btn subtle small ed-ppadd" style="margin-top:6px;">'+t("add_proposer")+'</button></div>';
+      var ag=m.aggregator||{};
+      h+='<div class="grid2" style="margin-top:10px;"><div class="field" style="margin:0;"><label>'+t("agg_provider")+'</label><select class="ed-agprov">'+opts(ag.provider)+'</select></div><div class="field" style="margin:0;"><label>'+t("agg_model")+'</label><input class="ed-agmodel" type="text" value="'+esc(ag.model||'')+'"></div></div>';
+      h+='<div class="field" style="margin-top:10px;"><label>'+t("agg_prompt")+'</label><textarea class="ed-agprompt" rows="2">'+esc(m.aggregator_prompt||'')+'</textarea></div></div></div>';
     });
-    $("#moa-list").innerHTML = h;
-  }
-  function saveConfig() {
-    var authOn = $("#ed-auth").checked;
-    var key = $("#ed-key").value.trim();
-    if (authOn && !key) { key = "sk-gw-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2); }
-    raw.server.master_key = authOn ? key : "";
-    raw.rate_limit.requests_per_minute = parseInt($("#ed-rpm").value, 10) || 0;
-    var provs = {};
-    document.querySelectorAll("#prov-list .subcard").forEach(function(el){ var name = el.querySelector(".ed-pname").value.trim(); if (!name) return; provs[name] = { type: el.querySelector(".ed-ptype").value, base_url: el.querySelector(".ed-purl").value.trim(), keys: el.querySelector(".ed-pkeys").value.split("\n").map(function(s){return s.trim();}).filter(Boolean), models: el.querySelector(".ed-pmodels").value.split("\n").map(function(s){return s.trim();}).filter(Boolean), supports_responses: el.querySelector(".ed-pres").checked }; });
-    raw.providers = provs;
-    var al = {};
-    document.querySelectorAll("#alias-list .row-inline").forEach(function(el){ var a = el.querySelector(".ed-aname").value.trim(), tv = el.querySelector(".ed-atarget").value.trim(); if (a && tv) al[a] = tv; });
-    raw.aliases = al;
-    var moa = {};
-    document.querySelectorAll("#moa-list .subcard").forEach(function(el){ var n = el.querySelector(".ed-mname").value.trim(); if (!n) return; var props = []; el.querySelectorAll(".ed-props .row-inline").forEach(function(p){ var pv = p.querySelector(".ed-pprov").value, mv = p.querySelector(".ed-pmodel").value.trim(); if (pv && mv) props.push({provider:pv, model:mv}); }); var entry = {proposers: props, aggregator: {provider: el.querySelector(".ed-agprov").value, model: el.querySelector(".ed-agmodel").value.trim()}}; var ap = el.querySelector(".ed-agprompt").value; if (ap && ap.trim()) entry.aggregator_prompt = ap.trim(); moa[n] = entry; });
-    raw.moa = moa;
-    $("#save-msg").textContent = t("saving");
-    api("/admin/api/config", {method:"PUT", json: raw}).then(function(){
-      if (authOn) { masterKey = key; localStorage.setItem(LS_KEY, key); } else { masterKey = ""; localStorage.removeItem(LS_KEY); }
-      setAuthPill(authOn); $("#save-msg").textContent = ""; toast(t("saved")); init();
-    }).catch(function(e){ $("#save-msg").textContent = t("save_fail") + e.message; toast(t("save_fail"), true); });
+    $("#moa-list").innerHTML=h;
+    $$("#moa-list .subcard").forEach(function(sc){ var n=sc.getAttribute("data-moa");
+      sc.querySelector(".sc-head").addEventListener("click", function(e){ if(e.target.closest("button")) return; if(expanded.moa.has(n)){expanded.moa.delete(n);sc.classList.remove("open");}else{expanded.moa.add(n);sc.classList.add("open");} });
+      sc.querySelector(".ed-mdel").addEventListener("click", function(){ askConfirm(t("delete"), t("confirm_delete"), function(){ delete raw.moa[n]; expanded.moa.delete(n); renderMoaList(); markDirty(); }); });
+      sc.querySelector(".ed-ppadd").addEventListener("click", function(){ var mm=raw.moa[n]; mm.proposers=mm.proposers||[]; mm.proposers.push({provider:"",model:""}); expanded.moa.add(n); renderMoaList(); markDirty(); });
+      $$("#moa-list .ed-props .row-inline").forEach(function(r){ r.querySelector(".ed-ppdel").addEventListener("click", function(){ /* removed via collect; for simplicity, remove from raw by index of parent moa */ var card=r.closest(".subcard"); var mn=card.getAttribute("data-moa"); var idx=parseInt(r.getAttribute("data-pi"),10); raw.moa[mn].proposers.splice(idx,1); renderMoaList(); markDirty(); }); });
+    });
   }
 
-  function loadOverview() { api("/admin/api/config").then(renderOverview).catch(function(){}); }
-  function renderOverview(cfg) {
-    var s = cfg.server || {}, rl = cfg.rate_limit || {};
-    $("#server-info").innerHTML = '<table><tbody><tr><th style="width:110px;">'+t("listen")+'</th><td class="mono">'+esc(s.host||"-")+":"+esc(s.port||"-")+'</td></tr><tr><th>'+t("master_key")+'</th><td class="mono">'+(s.master_key?esc(s.master_key):'<span class="error-text">'+t("no_key_set")+'</span>')+'</td></tr><tr><th>'+t("rate_limit")+'</th><td>'+(rl.requests_per_minute?esc(rl.requests_per_minute)+t("per_min"):t("no_limit"))+'</td></tr></tbody></table>';
-    var provs = cfg.providers || {}, names = Object.keys(provs);
-    if (!names.length) { $("#providers-wrap").innerHTML = '<div class="empty">'+t("no_provider")+'</div>'; }
+  $("#add-prov").addEventListener("click", function(){ var n="provider_"+Date.now(); ensureSections(); raw.providers[n]={type:"openai_like",base_url:"",keys:[],models:[],supports_responses:false}; expanded.prov.add(n); renderProvList(); markDirty(); });
+  $("#add-alias").addEventListener("click", function(){ var n="alias_"+Date.now(); ensureSections(); raw.aliases[n]="provider/model"; renderAliasList(); markDirty(); });
+  $("#add-moa").addEventListener("click", function(){ var n="pipeline_"+Date.now(); ensureSections(); raw.moa[n]={proposers:[{provider:"",model:""}],aggregator:{provider:"",model:""}}; expanded.moa.add(n); renderMoaList(); markDirty(); });
+
+  document.addEventListener("input", function(e){ if(e.target.closest("#panel-config")) markDirty(); });
+  document.addEventListener("change", function(e){ if(e.target.closest("#panel-config") && !e.target.classList.contains("ed-auth")) markDirty(); });
+  document.addEventListener("keydown", function(e){ if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==="s"){ e.preventDefault(); if(dirty) saveConfig(); } });
+  window.addEventListener("beforeunload", function(e){ if(dirty){ e.preventDefault(); e.returnValue=""; } });
+
+  $("#btn-save").addEventListener("click", saveConfig);
+  $("#btn-discard").addEventListener("click", function(){ askConfirm(t("discard"), t("confirm_discard"), init); });
+
+  function collectConfig() {
+    var authOn=$("#ed-auth").checked, key=$("#ed-key").value.trim();
+    if(authOn && !key){ key="sk-gw-"+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2); }
+    raw.server.master_key=authOn?key:""; raw.rate_limit.requests_per_minute=parseInt($("#ed-rpm").value,10)||0;
+    var provs={};
+    $$("#prov-list .subcard").forEach(function(el){ var name=el.querySelector(".ed-pname")?el.querySelector(".ed-pname").value.trim():""; if(!name){ name=el.getAttribute("data-prov"); } if(!name) return; provs[name]={type:el.querySelector(".ed-ptype").value,base_url:el.querySelector(".ed-purl").value.trim(),keys:el.querySelector(".ed-pkeys").value.split("\n").map(function(s){return s.trim();}).filter(Boolean),models:el.querySelector(".ed-pmodels").value.split("\n").map(function(s){return s.trim();}).filter(Boolean),supports_responses:el.querySelector(".ed-pres").checked}; });
+    raw.providers=provs;
+    var al={}; $$("#alias-list .row-inline").forEach(function(el){ var a=el.querySelector(".ed-aname").value.trim(), tv=el.querySelector(".ed-atarget").value.trim(); if(a&&tv) al[a]=tv; }); raw.aliases=al;
+    var moa={}; $$("#moa-list .subcard").forEach(function(el){ var n=el.querySelector(".ed-mname")?el.querySelector(".ed-mname").value.trim():""; if(!n){ n=el.getAttribute("data-moa"); } var props=[]; $$(".ed-props .row-inline", el).forEach(function(p){ var pv=p.querySelector(".ed-pprov").value, mv=p.querySelector(".ed-pmodel").value.trim(); if(pv&&mv) props.push({provider:pv,model:mv}); }); var entry={proposers:props,aggregator:{provider:el.querySelector(".ed-agprov").value,model:el.querySelector(".ed-agmodel").value.trim()}}; var ap=el.querySelector(".ed-agprompt").value; if(ap&&ap.trim()) entry.aggregator_prompt=ap.trim(); moa[n]=entry; }); raw.moa=moa;
+  }
+  function saveConfig() {
+    collectConfig();
+    var btn=$("#btn-save"); btn.textContent=t("saving");
+    api("/admin/api/config",{method:"PUT",json:raw}).then(function(){ var authOn=!!raw.server.master_key; if(authOn){ masterKey=raw.server.master_key; localStorage.setItem(LS_KEY,masterKey);} else { masterKey=""; localStorage.removeItem(LS_KEY);} setAuthPill(authOn); clearDirty(); btn.textContent=t("save"); toast(t("saved")); init(); }).catch(function(e){ btn.textContent=t("save"); toast(t("save_fail")+": "+e.message,true); });
+  }
+
+  function loadOverview(){ api("/admin/api/config").then(renderOverview).catch(function(){}); }
+  function renderOverview(cfg){ var s=cfg.server||{}, rl=cfg.rate_limit||{};
+    $("#server-info").innerHTML='<table><tbody><tr><th style="width:120px;">'+t("listen")+'</th><td class="mono">'+esc(s.host||"-")+":"+esc(s.port||"-")+'</td></tr><tr><th>'+t("master_key")+'</th><td class="mono">'+(s.master_key?esc(s.master_key):'<span class="error-text">'+t("no_key_set")+'</span>')+'</td></tr><tr><th>'+t("rate_limit")+'</th><td>'+(rl.requests_per_minute?esc(rl.requests_per_minute)+t("per_min"):t("no_limit"))+'</td></tr></tbody></table>';
+    var provs=cfg.providers||{}, names=Object.keys(provs);
+    if(!names.length){ $("#providers-wrap").innerHTML='<div class="empty">'+t("no_provider")+'</div>'; }
     else { var ph='<table><thead><tr><th>Provider</th><th>'+t("type")+'</th><th>'+t("base_url")+'</th><th>'+t("col_keypool")+'</th><th>'+t("col_model")+'</th><th>'+t("col_health")+'</th></tr></thead><tbody>';
       names.forEach(function(n){ var p=provs[n]||{}; var keys=(p.keys||[]).map(function(k){return '<span class="chip gray mono">'+esc(k)+'</span>';}).join(""); var models=(p.models||[]).map(function(m){return '<span class="chip">'+esc(m)+'</span>';}).join("");
         ph+="<tr><td><strong>"+esc(n)+"</strong></td><td>"+esc(p.type||"-")+"</td><td class='mono'>"+esc(p.base_url||"-")+"</td><td>"+(keys||"-")+"</td><td>"+(models||"-")+"</td><td data-health='"+esc(n)+"'><span class='dot unknown'></span><span style='color:var(--muted);font-size:12px;'>"+t("not_checked")+"</span></td></tr>"; });
-      $("#providers-wrap").innerHTML = ph+"</tbody></table>"; }
+      $("#providers-wrap").innerHTML=ph+"</tbody></table>"; }
     var al=cfg.aliases||{}, an=Object.keys(al);
-    if (!an.length) { $("#aliases-wrap").innerHTML='<div class="empty">'+t("no_alias")+'</div>'; }
+    if(!an.length){ $("#aliases-wrap").innerHTML='<div class="empty">'+t("no_alias")+'</div>'; }
     else { var ah='<table><thead><tr><th>'+t("aliases")+'</th><th>'+t("router")+'</th></tr></thead><tbody>'; an.forEach(function(a){ ah+='<tr><td class="mono"><strong>'+esc(a)+'</strong></td><td class="mono">'+esc(al[a])+'</td></tr>'; }); $("#aliases-wrap").innerHTML=ah+"</tbody></table>"; }
     var sel=$("#model-select"), html="";
-    if (an.length){ html+='<optgroup label="'+t("aliases")+'">'; an.forEach(function(a){html+='<option value="'+esc(a)+'">'+esc(a)+" -> "+esc(al[a])+'</option>';}); html+='</optgroup>'; }
+    if(an.length){ html+='<optgroup label="'+t("aliases")+'">'; an.forEach(function(a){html+='<option value="'+esc(a)+'">'+esc(a)+" → "+esc(al[a])+'</option>';}); html+='</optgroup>'; }
     Object.keys(provs).forEach(function(n){ var ms=(provs[n]||{}).models||[]; if(!ms.length)return; html+='<optgroup label="Provider: '+esc(n)+'">'; ms.forEach(function(m){html+='<option value="'+esc(m)+'">'+esc(n)+" / "+esc(m)+'</option>';}); html+='</optgroup>'; });
-    sel.innerHTML = html || '<option value="">'+t("no_models")+'</option>';
+    sel.innerHTML=html||'<option value="">'+t("no_models")+'</option>';
   }
-  $("#btn-health").addEventListener("click", function(){
-    api("/admin/api/health").then(function(res){ Object.keys(res).forEach(function(n){ var cell = document.querySelector('td[data-health="'+esc(n)+'"]'); if(!cell) return; var r=res[n]; cell.innerHTML='<span class="dot '+(r.ok?'ok':'bad')+'"></span><span style="font-size:12px;">'+(r.ok?r.latency_ms+'ms':esc(r.error||'fail'))+'</span>'; }); }).catch(function(){ toast(t("health_fail"), true); });
-  });
+  $("#btn-health").addEventListener("click", function(){ api("/admin/api/health").then(function(res){ Object.keys(res).forEach(function(n){ var cell=document.querySelector('td[data-health="'+esc(n)+'"]'); if(!cell)return; var r=res[n]; cell.innerHTML='<span class="dot '+(r.ok?'ok':'bad')+'"></span><span style="font-size:12px;">'+(r.ok?r.latency_ms+'ms':esc(r.error||'fail'))+'</span>'; }); }).catch(function(){ toast(t("health_fail"),true); }); });
 
-  function loadUsage() { api("/admin/api/usage/summary?days="+currentDays).then(renderUsage); api("/admin/api/usage/recent").then(renderRecent); }
-  function renderUsage(d) {
-    var tt=d.totals||{};
-    $("#usage-summary").innerHTML = '<table><tbody><tr><th>'+t("calls")+'</th><td>'+fmtNum(tt.calls)+'</td><th>'+t("total_tokens")+'</th><td>'+fmtNum(tt.total_tokens)+'</td></tr><tr><th>'+t("prompt")+'</th><td>'+fmtNum(tt.prompt_tokens)+'</td><th>'+t("completion")+'</th><td>'+fmtNum(tt.completion_tokens)+'</td></tr><tr><th>'+t("avg_latency")+'</th><td>'+fmtNum(tt.avg_latency_ms)+' ms</td><th>'+t("success_rate")+'</th><td>'+fmtRate(tt.success_rate)+'</td></tr></tbody></table>';
+  function loadUsage(){ api("/admin/api/usage/summary?days="+currentDays).then(renderUsage); api("/admin/api/usage/recent").then(renderRecent); }
+  function renderUsage(d){ var tt=d.totals||{};
+    $("#usage-tiles").innerHTML=
+      '<div class="stat"><div class="lbl">'+t("calls")+'</div><div class="val">'+fmtNum(tt.calls)+'</div><div class="sub">'+fmtNum(tt.total_tokens)+' '+t("total_tokens").toLowerCase()+'</div></div>'+
+      '<div class="stat"><div class="lbl">'+t("prompt")+'</div><div class="val">'+fmtNum(tt.prompt_tokens)+'</div><div class="sub">'+fmtNum(tt.completion_tokens)+' '+t("completion").toLowerCase()+'</div></div>'+
+      '<div class="stat"><div class="lbl">'+t("avg_latency")+'</div><div class="val">'+fmtNum(tt.avg_latency_ms)+'<span style="font-size:13px;color:var(--muted)"> ms</span></div><div class="sub">&nbsp;</div></div>'+
+      '<div class="stat"><div class="lbl">'+t("success_rate")+'</div><div class="val" style="color:var(--ok)">'+fmtRate(tt.success_rate)+'</div><div class="sub">&nbsp;</div></div>';
     var by=d.by_model||[];
-    if (by.length) { var h='<h3 style="margin:12px 0 8px;font-size:13px;">'+t("by_model")+'</h3><table><thead><tr><th>'+t("col_model")+'</th><th>'+t("col_count")+'</th><th>'+t("total_tokens")+'</th><th>'+t("col_latency")+'</th><th>'+t("success_rate")+'</th></tr></thead><tbody>'; by.forEach(function(m){ h+='<tr><td class="mono">'+esc(m.model)+'</td><td>'+fmtNum(m.calls)+'</td><td>'+fmtNum(m.total_tokens)+'</td><td>'+fmtNum(m.avg_latency_ms)+'ms</td><td>'+fmtRate(m.success_rate)+'</td></tr>'; }); $("#usage-summary").innerHTML += h+'</tbody></table>'; }
+    if(!by.length){ $("#usage-by-model").innerHTML='<div class="empty">'+t("no_records")+'</div>'; }
+    else { var h='<table><thead><tr><th>'+t("col_model")+'</th><th>'+t("col_count")+'</th><th>'+t("total_tokens")+'</th><th>'+t("col_latency")+'</th><th>'+t("success_rate")+'</th></tr></thead><tbody>'; by.forEach(function(m){ h+='<tr><td class="mono">'+esc(m.model)+'</td><td>'+fmtNum(m.calls)+'</td><td>'+fmtNum(m.total_tokens)+'</td><td>'+fmtNum(m.avg_latency_ms)+'ms</td><td>'+fmtRate(m.success_rate)+'</td></tr>'; }); $("#usage-by-model").innerHTML=h+'</tbody></table>'; }
   }
-  function renderRecent(rows) {
-    rows = rows.rows||rows||[];
-    if (!rows.length) { $("#usage-recent").innerHTML='<div class="empty">'+t("no_records")+'</div>'; return; }
+  function renderRecent(rows){ rows=rows.rows||rows||[];
+    if(!rows.length){ $("#usage-recent").innerHTML='<div class="empty">'+t("no_records")+'</div>'; return; }
     var h='<table><thead><tr><th>'+t("col_time")+'</th><th>'+t("col_model")+'</th><th>'+t("col_provider")+'</th><th>'+t("total_tokens")+'</th><th>'+t("col_latency")+'</th><th>'+t("col_status")+'</th><th>'+t("col_stream")+'</th></tr></thead><tbody>';
     rows.slice(0,50).forEach(function(r){ h+='<tr><td>'+fmtTs(r.ts)+'</td><td class="mono">'+esc(r.model)+'</td><td>'+esc(r.provider)+'</td><td>'+fmtNum(r.total_tokens)+'</td><td>'+fmtNum(r.latency_ms)+'ms</td><td>'+(r.status>=200&&r.status<300?'<span class="dot ok"></span>'+r.status:'<span class="dot bad"></span>'+r.status)+'</td><td>'+(r.stream?t("yes"):t("no"))+'</td></tr>'; });
     $("#usage-recent").innerHTML=h+'</tbody></table>';
   }
-  document.querySelectorAll("#days-seg button").forEach(function(b){ b.addEventListener("click", function(){ document.querySelectorAll("#days-seg button").forEach(function(x){x.classList.remove("active");}); b.classList.add("active"); currentDays=parseInt(b.dataset.days,10); loadUsage(); }); });
+  $$("#days-seg button").forEach(function(b){ b.addEventListener("click", function(){ $$("#days-seg button").forEach(function(x){x.classList.remove("active");}); b.classList.add("active"); currentDays=parseInt(b.dataset.days,10); loadUsage(); }); });
 
-  $("#btn-test").addEventListener("click", function(){
-    var m=$("#model-select").value; if(!m){ toast(t("pick_model"), true); return; }
-    $("#test-result").innerHTML='<span class="error-text">'+t("testing")+'</span>';
-    api("/admin/api/test", {method:"POST", json:{model:m}}).then(function(r){ if (r.ok) $("#test-result").innerHTML='<span class="dot ok"></span> '+r.latency_ms+'ms · '+t("reply")+': '+esc(r.reply); else $("#test-result").innerHTML='<span class="dot bad"></span> '+t("fail")+': '+esc(r.error); }).catch(function(e){ $("#test-result").innerHTML='<span class="dot bad"></span> '+esc(e.message); });
-  });
+  $("#btn-test").addEventListener("click", function(){ var m=$("#model-select").value; if(!m){ toast(t("pick_model"),true); return; } $("#test-result").innerHTML='<span class="error-text">'+t("testing")+'</span>'; api("/admin/api/test",{method:"POST",json:{model:m}}).then(function(r){ if(r.ok) $("#test-result").innerHTML='<span class="dot ok"></span> '+r.latency_ms+'ms · '+t("reply")+': '+esc(r.reply); else $("#test-result").innerHTML='<span class="dot bad"></span> '+t("fail")+': '+esc(r.error); }).catch(function(e){ $("#test-result").innerHTML='<span class="dot bad"></span> '+esc(e.message); }); });
 
-  applyStatic();
-  init();
+  applyTheme(); applyStatic(); init();
 })();
 </script>
 </body>
