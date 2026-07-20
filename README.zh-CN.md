@@ -1,6 +1,6 @@
 # llm-gateway
 
-> 个人用 LLM API 聚合网关：单进程 FastAPI 服务，对外暴露 OpenAI 兼容 API，把请求转发到多家 LLM 服务商（OpenAI / Anthropic / Gemini / DeepSeek 及任意 OpenAI 兼容服务），支持模型别名、密钥池故障转移、用量统计、限流和内置管理控制台。
+> 自托管 OpenAI 兼容 LLM 网关：聚合多家服务商（OpenAI / Anthropic / Gemini / DeepSeek 及任意 OpenAI 兼容服务），统一一个 API，支持模型别名、密钥池故障转移、用量统计、限流、内置控制台，并带 MOA 与 planner-worker 流水线（含多模态：视觉 / 生图 / 生视频）。
 
 [English](README.md)
 
@@ -130,6 +130,23 @@ moa:
 
 `model` 填 `moa:default`（或 `moa/default`）：proposer 并行作答 -> aggregator 综合 -> 返回。三种输入面都支持，流式输出综合过程。单个 proposer 失败会记为注记并跳过，不影响整体。
 
+## Planner-Worker（pw）
+
+独立于 MOA。强 **planner** 模型把任务拆成子任务，便宜 **worker** 模型并行执行，planner 综合出最终答案（可多轮 re-plan，最多 `max_rounds`）。贵的 token 只花在规划上，脏活累活走便宜模型。
+
+```yaml
+planner_worker:
+  solve:
+    planner: { provider: openai, model: gpt-4o, reasoning_effort: high }
+    workers:
+      - { provider: deepseek, model: deepseek-chat, reasoning_effort: low }
+      - { provider: openai, model: gpt-4o-mini }
+    max_rounds: 1
+    max_concurrency: 4
+```
+
+`model` 填 `pw:solve` 触发。worker 失败自动跳过（记注记），不中断整体。复用 TPS 调度（并发上限、并行派发、末段流式）。
+
 ## 管理控制台
 
 浏览器打开 `http://127.0.0.1:8080/`：
@@ -176,7 +193,7 @@ docker run -d --name llm-gateway \
 .venv/bin/python tests/smoke_test.py
 ```
 
-预期 `=== 37/37 passed ===`。mock 在同一端口模拟 openai_like / anthropic / gemini，并对每个 provider 的第一个 key 注入 500 以验证故障转移。
+预期 `=== 47/47 passed ===`。mock 在同一端口模拟 openai_like / anthropic / gemini（含生图/生视频端点），并对每个 provider 的第一个 key 注入 500 以验证故障转移；还覆盖 MOA（并行+多模态阶段）、planner-worker、工具修复、流式中断恢复、管理页配置编辑。
 
 ## macOS 常驻运行
 
@@ -206,7 +223,8 @@ app/
   config.py          # YAML 配置加载 + 热重载 + 保存
   router.py          # /v1/chat/completions、/v1/responses、/v1/messages、/v1/models、/v1/embeddings
   protocol.py        # responses↔chat、anthropic↔chat 转换（含流式）
-  moa.py             # MOA 混合智能体流水线
+  moa.py             # MOA（并行 proposer + 多模态分阶段流水线）
+  planner_worker.py  # Planner-Worker（强 planner + 便宜 worker）
   providers/         # openai_like / anthropic / gemini 协议适配
   pool.py            # 密钥池：轮询 + 故障转移
   stats.py           # SQLite 用量统计（aiosqlite）

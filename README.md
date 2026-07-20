@@ -1,6 +1,6 @@
 # llm-gateway
 
-> A personal, self-hosted LLM API aggregation gateway. Exposes an OpenAI-compatible API and forwards requests to multiple LLM providers (OpenAI / Anthropic / Gemini / DeepSeek / and any OpenAI-compatible service) with model aliases, a key pool with automatic failover, usage stats, rate limiting, and a built-in admin console.
+> A self-hosted, OpenAI-compatible LLM gateway. Aggregate multiple providers (OpenAI / Anthropic / Gemini / DeepSeek / any OpenAI-compatible service) behind one API with model aliases, a key pool with automatic failover, usage stats, rate limiting, a built-in admin console, plus Mixture-of-Agents and planner-worker pipelines (incl. multimodal: vision / image-gen / video-gen).
 
 [简体中文](README.zh-CN.md)
 
@@ -13,7 +13,9 @@ A single-process FastAPI service that exposes an **OpenAI-compatible API** and f
 - **Embeddings passthrough**: `POST /v1/embeddings`, sharing the same key pool and stats
 - **Anthropic Messages input**: `POST /v1/messages`, so Anthropic-protocol clients can also reach any upstream
 - **Unified routing**: Responses is the canonical hub — any input face (`/v1/chat/completions`, `/v1/responses`, `/v1/messages`) can reach any upstream (openai_like / anthropic / gemini), with cross-protocol streaming conversion
-- **MOA (Mixture-of-Agents)**: multiple proposers answer in parallel, an aggregator synthesizes; trigger with `model: moa:<name>`
+- **MOA (Mixture-of-Agents)**: parallel proposers + aggregator synthesis, **or a staged multimodal pipeline** (text / vision / image-gen / video-gen) that chains models into a hybrid LLM; trigger with `model: moa:<name>`
+- **Planner-Worker**: a strong planner model decomposes the task and cheap worker models execute subtasks in parallel, then the planner synthesizes (optionally re-plans); trigger with `model: pw:<name>` — independent of MOA
+- **Media generation**: OpenAI-compatible image/video generation with async-task polling; mix generative models into pipelines
 - **Tool resilience**: auto-repairs malformed `tool_call` JSON; if the upstream errors or drops mid-stream, a valid terminator (`[DONE]` / `response.completed` / `message_stop`) is synthesized so the client session never breaks on a broken stream
 - **Multi-provider**: OpenAI-compatible, Anthropic Messages, Google Gemini — automatic format conversion
 - **Model aliases**: short alias -> `provider/model`, transparent switching
@@ -130,6 +132,23 @@ moa:
 
 Set `model` to `moa:default` (or `moa/default`): proposers answer in parallel -> aggregator synthesizes -> returned. All three input faces support it; streaming outputs the aggregator's synthesis. A single proposer failure is recorded as a note and skipped — it never breaks the whole run.
 
+## Planner-Worker (pw)
+
+Independent of MOA. A strong **planner** model decomposes the task into subtasks; cheap **worker** models execute them in parallel; the planner synthesizes a final answer (and may re-plan for up to `max_rounds`). Expensive tokens go to planning, grunt work to cheap models.
+
+```yaml
+planner_worker:
+  solve:
+    planner: { provider: openai, model: gpt-4o, reasoning_effort: high }
+    workers:
+      - { provider: deepseek, model: deepseek-chat, reasoning_effort: low }
+      - { provider: openai, model: gpt-4o-mini }
+    max_rounds: 1
+    max_concurrency: 4
+```
+
+Trigger with `model: pw:solve`. Worker failures are skipped (noted), never aborting the run. Reuses the TPS scheduler (concurrency cap, parallel dispatch, streamed final synthesis).
+
 ## Admin console
 
 Open `http://127.0.0.1:8080/` in a browser:
@@ -176,7 +195,7 @@ No real API key needed — the built-in mock upstream runs an end-to-end smoke t
 .venv/bin/python tests/smoke_test.py
 ```
 
-Expect `=== 37/37 passed ===`. The mock simulates openai_like / anthropic / gemini on one port and injects a 500 for each provider's first key to verify failover.
+Expect `=== 47/47 passed ===`. The mock simulates openai_like / anthropic / gemini on one port (plus image/video endpoints) and injects a 500 for each provider's first key to verify failover. It also covers MOA (parallel + multimodal stages), planner-worker, tool repair, mid-stream recovery, and admin config editing.
 
 ## Run as a macOS service
 
@@ -206,7 +225,8 @@ app/
   config.py          # YAML config loading + hot reload + save
   router.py          # /v1/chat/completions, /v1/responses, /v1/messages, /v1/models, /v1/embeddings
   protocol.py        # responses<->chat, anthropic<->chat converters (incl. streaming)
-  moa.py             # Mixture-of-Agents pipeline
+  moa.py             # Mixture-of-Agents (parallel proposers + multimodal staged pipeline)
+  planner_worker.py  # Planner-Worker pattern (strong planner + cheap workers)
   providers/         # openai_like / anthropic / gemini protocol adapters
   pool.py            # key pool: round-robin + failover
   stats.py           # SQLite usage stats (aiosqlite)
