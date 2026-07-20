@@ -80,6 +80,50 @@ def _effective_effort(agent: dict, default: str | None) -> str | None:
     return e if e and e != "none" else None
 
 
+def _jaccard(a: str, b: str) -> float:
+    sa = set((a or "").lower().split()); sb = set((b or "").lower().split())
+    if not sa and not sb:
+        return 1.0
+    union = sa | sb
+    return len(sa & sb) / len(union) if union else 0.0
+
+
+def _dedup(outs: list[str], threshold: float = 0.85) -> list[str]:
+    """Drop near-duplicate proposer outputs (keep first of each cluster)."""
+    kept: list[str] = []
+    for o in outs:
+        if not any(_jaccard(o, k) >= threshold for k in kept):
+            kept.append(o)
+    return kept
+
+
+async def _compress(text: str, pipe: dict, providers, pool, sem) -> str:
+    """Compress a verbose intermediate result before feeding the aggregator/planner.
+    Truncates to max_chars, or summarizes with a cheap model if configured."""
+    cfg = pipe.get("compress") or {}
+    if not cfg.get("enabled") or not text:
+        return text
+    max_chars = int(cfg.get("max_chars", 600))
+    if len(text) <= max_chars:
+        return text
+    summ = cfg.get("summarizer")
+    if summ and summ.get("provider"):
+        prov = providers.get(summ["provider"])
+        if prov is not None:
+            try:
+                cb = {"model": summ["model"], "messages": [
+                    {"role": "system", "content": "Summarize the following; keep key facts; be concise."},
+                    {"role": "user", "content": text}], "stream": False}
+                res = await _call_chat(prov, summ["provider"], summ["model"], cb, pool, False, sem)
+                d = res.json() if isinstance(res, httpx.Response) else res
+                out = _extract_text(d)
+                if out:
+                    return out
+            except Exception:
+                pass
+    return text[:max_chars] + " …"
+
+
 async def _with_sem(sem, coro_fn):
     async with sem:
         return await coro_fn()
@@ -218,9 +262,20 @@ async def _run_proposers(cfg, providers, pool, chat_body, pipe, name, stream):
             logger.warning("MOA proposer %s/%s failed: %r", p.get("provider"), p.get("model"), exc)
             return f"[proposer {p.get('provider')}/{p.get('model')} failed: {exc!r}]"
 
-    outputs = await asyncio.gather(*[one(p) for p in proposers])
-    sections = [f"### Assistant {i} ({p.get('provider')}/{p.get('model')}):\n{o}"
-                for i, (p, o) in enumerate(zip(proposers, outputs), 1)]
+    if pipe.get("early_stop"):
+        min_sim = float(pipe.get("early_stop_similarity", 0.7))
+        outputs = []
+        for p in proposers:
+            outputs.append(await one(p))
+            if len(outputs) >= 2 and any(_jaccard(outputs[-1], k) >= min_sim for k in outputs[:-1]):
+                break  # consensus reached, skip the rest
+    else:
+        outputs = await asyncio.gather(*[one(p) for p in proposers])
+    if pipe.get("dedup", True):
+        outputs = _dedup(outputs, float(pipe.get("dedup_threshold", 0.85)))
+    if (pipe.get("compress") or {}).get("enabled"):
+        outputs = await asyncio.gather(*[_compress(o, pipe, providers, pool, sem) for o in outputs])
+    sections = [f"### Assistant {i}:\n{o}" for i, o in enumerate(outputs, 1)]
     sys_content = agg_prompt + "\n\nThe assistants' answers follow:\n\n" + "\n\n".join(sections)
     agg_messages = [{"role": "system", "content": sys_content}] + list(chat_body.get("messages") or [])
     agg_body = {"model": agg["model"], "messages": agg_messages, "stream": stream}

@@ -85,6 +85,10 @@ moa:
       provider: openai
       model: gpt-4o
       reasoning_effort: medium   # reasoning effort for the synthesizer
+    # token-saving options (optional):
+    # dedup: true                # merge similar proposer outputs before aggregating
+    # early_stop: true           # stop once a proposer agrees with a previous one
+    # compress: {enabled: true, max_chars: 600, summarizer: {provider: deepseek, model: deepseek-chat}}
   # Multimodal hybrid pipeline (stages): mix text / vision / image-gen / video-gen.
   # Trigger with model: moa:hybrid
   hybrid:
@@ -137,6 +141,7 @@ cascade:
       - {name: L2, provider: openai, model: gpt-4o, reasoning_effort: high}   # T1 floor
     consensus_k: 3
     strictness: balanced      # frugal / balanced / strict
+    t1_verify: false          # strict: have T1 verify/rewrite low-confidence results
 
 # ---------------------------------------------------------------------
 # Result cache (optional): caches non-stream upstream calls by (provider,model,body)

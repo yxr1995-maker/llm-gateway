@@ -38,6 +38,12 @@ _ROUTE_PROMPT = (
     "You are a router. Given the user task, output the minimum 0-based tier index needed "
     "(0 = trivial, higher = harder). Respond with ONLY JSON: {\"tier\":0}."
 )
+_T1_VERIFY_PROMPT = (
+    "You are the final reviewer. Given the task and a candidate answer, if the candidate is "
+    "correct and complete, output it unchanged. Otherwise output a corrected, complete answer. "
+    "Output ONLY the final answer, nothing else."
+)
+
 _VERIFY_PROMPT = (
     "You are a verifier. Given the task and a candidate answer, judge whether the answer is "
     "correct and complete. Respond with ONLY JSON: {\"confident\":true/false,\"score\":0.0-1.0,"
@@ -106,14 +112,22 @@ async def run_cascade(cfg, providers, pool, chat_body: dict, name: str, stream: 
         raise ValueError(f"cascade `{name}` requires tiers")
     user_text = _last_user_input(chat_body)["text"]
     verifier = router or tiers[0]
+    used = {"in": 0, "out": 0}
+
+    def _acc(res):
+        d = res.json() if isinstance(res, httpx.Response) else res
+        u = (d.get("usage") or {}) if isinstance(d, dict) else {}
+        used["in"] += int(u.get("prompt_tokens", u.get("input_tokens", 0)) or 0)
+        used["out"] += int(u.get("completion_tokens", u.get("output_tokens", 0)) or 0)
 
     async def tier_answer(agent):
         if k <= 1:
             res = await _call_text(agent, providers, pool, [{"role": "user", "content": user_text}], sem, default_effort)
-            return _text_of(res)
+            _acc(res); return _text_of(res)
         outs = await asyncio.gather(*[
             _call_text(agent, providers, pool, [{"role": "user", "content": user_text}], sem, default_effort)
             for _ in range(k)])
+        for r in outs: _acc(r)
         return _vote([_text_of(r) for r in outs])
 
     async def verify(cand):
@@ -122,6 +136,7 @@ async def run_cascade(cfg, providers, pool, chat_body: dict, name: str, stream: 
                                    [{"role": "system", "content": _VERIFY_PROMPT},
                                     {"role": "user", "content": f"Task: {user_text}\n\nAnswer: {cand}"}],
                                    sem, default_effort)
+            _acc(res)
             d = _parse_json(_text_of(res)) or {}
             if d.get("confident") is True:
                 return True
@@ -141,6 +156,7 @@ async def run_cascade(cfg, providers, pool, chat_body: dict, name: str, stream: 
             res = await _call_text(router, providers, pool,
                                    [{"role": "system", "content": _ROUTE_PROMPT},
                                     {"role": "user", "content": user_text}], sem, default_effort)
+            _acc(res)
             d = _parse_json(_text_of(res)) or {}
             t = d.get("tier")
             if isinstance(t, int):
@@ -150,6 +166,8 @@ async def run_cascade(cfg, providers, pool, chat_body: dict, name: str, stream: 
 
     # 2) cascade: cheap -> T1
     last_cand = ""
+    accepted_at_top = False
+    accepted_idx = start
     for i in range(start, len(tiers)):
         agent = tiers[i]
         is_top = (i == len(tiers) - 1)
@@ -158,9 +176,27 @@ async def run_cascade(cfg, providers, pool, chat_body: dict, name: str, stream: 
         except Exception as exc:
             logger.warning("cascade tier %s failed: %r", agent.get("name") or i, exc)
             last_cand = ""
+        accepted_idx = i
         if is_top:
+            accepted_at_top = True
             break  # T1 floor: accept
         if await verify(last_cand):
             break  # accepted at a cheap tier
         # else escalate
-    return _chat_dict(tiers[-1]["model"], last_cand or "")
+    # 3) optional T1 verify/edit (strict / t1_verify): quality floor closer to T1
+    t1_verify = bool(pipe.get("t1_verify")) or pipe.get("strictness") == "strict"
+    if t1_verify and not accepted_at_top and last_cand:
+        try:
+            top = tiers[-1]
+            res = await _call_text(top, providers, pool,
+                [{"role": "system", "content": _T1_VERIFY_PROMPT},
+                 {"role": "user", "content": f"Task: {user_text}\n\nCandidate:\n{last_cand}"}],
+                sem, default_effort)
+            _acc(res)
+            verified = _text_of(res)
+            if verified:
+                last_cand = verified
+        except Exception as exc:
+            logger.warning("cascade t1_verify failed, keeping cheap answer: %r", exc)
+    return _chat_dict(tiers[-1]["model"], last_cand or "",
+                      {"prompt_tokens": used["in"], "completion_tokens": used["out"], "total_tokens": used["in"] + used["out"]})

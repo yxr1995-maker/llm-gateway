@@ -26,7 +26,7 @@ import re
 
 import httpx
 
-from .moa import _call_chat, _effective_effort, _extract_text, _last_user_input
+from .moa import _call_chat, _compress, _effective_effort, _extract_text, _last_user_input
 
 logger = logging.getLogger("llm-gateway.planner_worker")
 
@@ -146,6 +146,8 @@ async def run_planner_worker(cfg, providers, pool, chat_body: dict, name: str, s
         all_results += list(await run_workers(more))
 
     # final synthesis (streamed if the client asked for stream)
+    if (pipe.get("compress") or {}).get("enabled"):
+        all_results = list(await asyncio.gather(*[_compress(r, pipe, providers, pool, sem) for r in all_results]))
     syn_messages = [{"role": "system", "content": _SYNTH_PROMPT + "\n\nWorker results:\n\n" + "\n\n".join(all_results)},
                     {"role": "user", "content": user_text}]
     return await call_text(planner, syn_messages, bool(stream))

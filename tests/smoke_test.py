@@ -112,6 +112,21 @@ moa:
         model: gpt-4o
         modality: image
         prompt: a dog
+  opt:
+    dedup: true
+    early_stop: true
+    early_stop_similarity: 0.5
+    compress:
+      enabled: true
+      max_chars: 50
+    proposers:
+      - provider: openai
+        model: gpt-4o
+      - provider: openai
+        model: gpt-4o
+    aggregator:
+      provider: openai
+      model: gpt-4o
 planner_worker:
   solve:
     planner:
@@ -144,6 +159,21 @@ cascade:
         model: claude-sonnet-4-5
         reasoning_effort: high
     consensus_k: 1
+  solve_strict:
+    router:
+      provider: openai
+      model: gpt-4o
+    tiers:
+      - name: L0
+        provider: openai
+        model: gpt-4o
+        reasoning_effort: none
+      - name: L2
+        provider: anthropic
+        model: claude-sonnet-4-5
+        reasoning_effort: high
+    consensus_k: 1
+    t1_verify: true
 cache:
   enabled: true
   ttl: 60
@@ -333,6 +363,18 @@ rate_limit:
         r2 = httpx.post(f"{BASE}/chat/completions", headers=h, json=body)
         check("cache first MISS", r1.headers.get("x-cache") == "MISS", r1.headers.get("x-cache"))
         check("cache second HIT", r2.headers.get("x-cache") == "HIT", r2.headers.get("x-cache"))
+
+        # 11j cascade t1_verify: accepted at L0 -> T1 (anthropic) rewrites
+        r = httpx.post(f"{BASE}/chat/completions", headers=h,
+                       json={"model": "cascade:solve_strict", "messages": [{"role": "user", "content": "hi"}]})
+        check("cascade t1_verify 200", r.status_code == 200, str(r.status_code)+r.text[:120])
+        if r.status_code == 200:
+            check("cascade t1_verify used T1", r.json()["choices"][0]["message"].get("content") == "Hi from mock claude!", r.text[:160])
+
+        # 11k MOA dedup + early_stop + compress (two identical proposers)
+        r = httpx.post(f"{BASE}/chat/completions", headers=h,
+                       json={"model": "moa:opt", "messages": [{"role": "user", "content": "hi"}]})
+        check("MOA opt (dedup/early_stop/compress) 200", r.status_code == 200, str(r.status_code)+r.text[:120])
 
         # 11f1 multimodal staged pipeline (image -> vision -> text)
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
