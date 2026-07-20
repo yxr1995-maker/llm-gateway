@@ -22,7 +22,10 @@ providers:
     type: openai_like
     base_url: https://api.openai.com/v1
     keys: ["sk-xxxxxxxx", "sk-yyyyyyyy"]
-    models: ["gpt-4o", "gpt-4o-mini"]
+    models:
+      - name: gpt-4o
+        context: 128000      # optional context window (exposed via GET /v1/models)
+      - gpt-4o-mini          # plain string is also fine
     supports_responses: true   # set true when the upstream natively supports /v1/responses (passthrough fast path)
 
   # ---- Anthropic（Claude）----
@@ -72,11 +75,14 @@ moa:
     proposers:
       - provider: openai
         model: gpt-4o
+        reasoning_effort: low     # optional: none/low/medium/high
       - provider: anthropic
         model: claude-sonnet-4-5
+    default_reasoning_effort: medium   # default reasoning effort for agents (none/low/medium/high/very_high)
     aggregator:
       provider: openai
       model: gpt-4o
+      reasoning_effort: medium   # reasoning effort for the synthesizer
     # aggregator_prompt: "custom synthesis prompt (optional)"
 
 # ---------------------------------------------------------------------

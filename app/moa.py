@@ -82,6 +82,15 @@ async def _call_chat(provider, provider_name: str, model: str, chat_body: dict,
     raise last or RuntimeError(f"provider `{provider_name}` has no available upstream key")
 
 
+def _effective_effort(agent: dict, default: str | None) -> str | None:
+    """Resolve an agent's reasoning effort: per-agent value wins, else the pipeline
+    default; "default" means inherit the pipeline default. Returns None if none."""
+    e = agent.get("reasoning_effort")
+    if not e or e == "default":
+        e = default
+    return e if e and e != "none" else None
+
+
 async def run_moa(cfg, providers, pool, chat_body: dict, pipeline_name: str,
                   stream: bool):
     """Run the MOA pipeline; return the aggregator's chat response (dict or async iter)."""
@@ -91,6 +100,7 @@ async def run_moa(cfg, providers, pool, chat_body: dict, pipeline_name: str,
     proposers = pipe.get("proposers") or []
     agg = pipe.get("aggregator") or {}
     agg_prompt = pipe.get("aggregator_prompt") or DEFAULT_AGG_PROMPT
+    default_effort = pipe.get("default_reasoning_effort")
     if not proposers or not agg.get("provider") or not agg.get("model"):
         raise ValueError(f"MOA pipeline `{pipeline_name}` requires proposers and aggregator")
 
@@ -105,7 +115,11 @@ async def run_moa(cfg, providers, pool, chat_body: dict, pipeline_name: str,
         if prov is None:
             return f"[proposer {p.get('provider')} unavailable]"
         try:
-            res = await _call_chat(prov, p["provider"], p["model"], prop_body, pool, False)
+            pb = dict(prop_body)
+            _e = _effective_effort(p, default_effort)
+            if _e:
+                pb["reasoning_effort"] = _e
+            res = await _call_chat(prov, p["provider"], p["model"], pb, pool, False)
             data = res.json() if isinstance(res, httpx.Response) else res
             return _extract_text(data)
         except Exception as exc:
@@ -130,6 +144,9 @@ async def run_moa(cfg, providers, pool, chat_body: dict, pipeline_name: str,
         if k in chat_body:
             agg_body[k] = chat_body[k]
 
+    _ae = _effective_effort(agg, default_effort)
+    if _ae:
+        agg_body["reasoning_effort"] = _ae
     prov = providers.get(agg["provider"])
     if prov is None:
         raise RuntimeError(f"aggregator provider `{agg['provider']}` unavailable")

@@ -129,10 +129,11 @@ class GatewayConfig:
                 return provider_name, real
             # prefix is not a configured provider -> continue by model name; raises KeyError if unmatched
 
-        # 3. look up in each provider's models list
+        # 3. look up in each provider's models list (entries may be strings or {name, context})
         for provider_name, pcfg in self.providers.items():
-            models = (pcfg or {}).get("models") or []
-            if cur in models:
-                return provider_name, cur
+            for m in (pcfg or {}).get("models") or []:
+                mname = m.get("name") if isinstance(m, dict) else m
+                if cur == mname:
+                    return provider_name, cur
 
         raise KeyError(model)

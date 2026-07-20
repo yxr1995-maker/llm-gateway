@@ -255,9 +255,14 @@ async def list_models(request: Request):
         )
     for pname, pcfg in cfg.providers.items():
         for m in (pcfg or {}).get("models") or []:
-            data.append(
-                {"id": str(m), "object": "model", "created": created, "owned_by": pname}
-            )
+            if isinstance(m, dict):
+                mid = m.get("name"); ctx = m.get("context") or m.get("context_window")
+            else:
+                mid = m; ctx = None
+            item = {"id": str(mid), "object": "model", "created": created, "owned_by": pname}
+            if ctx:
+                item["context_window"] = int(ctx)
+            data.append(item)
     for mname in (cfg.raw.get("moa") or {}):
         data.append(
             {"id": f"moa:{mname}", "object": "model", "created": created, "owned_by": "moa"}

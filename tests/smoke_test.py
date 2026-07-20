@@ -59,7 +59,10 @@ providers:
     type: openai_like
     base_url: http://127.0.0.1:{MOCK_PORT}/v1
     keys: ["sk-fake1", "sk-good1"]
-    models: ["gpt-4o", "text-embedding-3-small"]
+    models:
+      - name: gpt-4o
+        context: 128000
+      - text-embedding-3-small
     supports_responses: true
   anthropic:
     type: anthropic
@@ -80,11 +83,15 @@ moa:
     proposers:
       - provider: openai
         model: gpt-4o
+        reasoning_effort: low
       - provider: anthropic
         model: claude-sonnet-4-5
+        reasoning_effort: default
+    default_reasoning_effort: high
     aggregator:
       provider: openai
       model: gpt-4o
+      reasoning_effort: medium
 rate_limit:
   requests_per_minute: 0
 """)
@@ -116,6 +123,8 @@ rate_limit:
         check("models include aliases", {"gpt", "claude", "gem"} <= ids, str(ids))
         check("models include base models",
               {"gpt-4o", "claude-sonnet-4-5", "gemini-2.5-flash"} <= ids, str(ids))
+        ctx = {x["id"]: x.get("context_window") for x in r.json()["data"]}
+        check("model context_window exposed", ctx.get("gpt-4o") == 128000, str(ctx))
         check("models include moa pipeline", "moa:default" in ids, str(ids))
 
         # 4 openai non-stream (first key sk-fake1 fails -> auto-failover sk-good1)

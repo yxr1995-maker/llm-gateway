@@ -126,6 +126,7 @@
   #auth-overlay .modal h3 { display: flex; align-items: center; gap: 8px; }
   footer { text-align: center; color: var(--faint); font-size: 12px; padding: 10px 0 0; }
   .hint { font-size: 11.5px; color: var(--faint); margin-top: 4px; }
+  .fld { display:block; font-size:11.5px; color:var(--muted); margin-bottom:4px; font-weight:550; text-transform:uppercase; letter-spacing:.03em; }
 </style>
 </head>
 <body>
@@ -160,10 +161,12 @@
     </div>
     <div class="card">
       <div class="section-head"><h2 data-i18n="aliases"></h2><button class="btn subtle small" id="add-alias"><span data-i18n="add_alias"></span></button></div>
+      <div class="desc" data-i18n="aliases_desc"></div>
       <div id="alias-list"></div>
     </div>
     <div class="card">
       <div class="section-head"><h2>MOA</h2><button class="btn subtle small" id="add-moa"><span data-i18n="add_pipeline"></span></button></div>
+      <div class="desc" data-i18n="moa_desc"></div>
       <div id="moa-list"></div>
     </div>
   </div>
@@ -271,7 +274,13 @@
       unsaved: "Unsaved changes", save: "Save", discard: "Discard", cancel: "Cancel", confirm: "Confirm", confirm_delete: "Delete this item? This cannot be undone.",
       confirm_discard: "Discard all unsaved changes?", saved: "Config saved and hot-reloaded", save_fail: "Save failed", saving: "Saving…",
       enter_master_key: "Please enter the master key", auth_on: "Auth on", auth_off: "No auth", footer: "llm-gateway · local console · data stays on this machine",
-      models_count: "models", keys_count: "keys", expand_hint: "Click a card to expand"
+      models_count: "models", keys_count: "keys", expand_hint: "Click a card to expand",
+      context: "Context", models: "Models", add_model: "Add model", preset: "Preset",
+      preset_hint: "Pick a common provider to auto-fill type and base URL.",
+      models_hint: "Context is optional (exposed via GET /v1/models).",
+      shortcut_name: "Shortcut name", uses: "uses", aliases_desc: "A shortcut lets clients use a short model name that routes to the selected provider/model.",
+      aggregator: "Aggregator (mother model)", moa_hint_sub: "sub-models answer in parallel", moa_hint_agg: "synthesizes the final answer",
+      agg_prompt_ph: "Leave empty for default", reasoning_effort: "Reasoning effort", moa_desc: "Mixture-of-Agents: sub-models answer in parallel, the mother model synthesizes a final answer.", reason_def: "Default", reason_none: "None", reason_low: "Low", reason_medium: "Medium", reason_high: "High", reason_vhigh: "Very high", default_reasoning: "Default reasoning effort", reasoning_hint: "Agents use this unless individually overridden."
     },
     zh: {
       checking: "检测中…", auth_title: "需要鉴权", auth_prompt: "鉴权已开启，请输入 Master Key 继续。",
@@ -295,7 +304,13 @@
       unsaved: "有未保存的更改", save: "保存", discard: "放弃", cancel: "取消", confirm: "确认", confirm_delete: "确认删除该项？此操作不可撤销。",
       confirm_discard: "放弃所有未保存的更改？", saved: "配置已保存并热生效", save_fail: "保存失败", saving: "保存中…",
       enter_master_key: "请输入 Master Key", auth_on: "鉴权已开启", auth_off: "免鉴权", footer: "llm-gateway · 本地控制台 · 数据仅存于本机",
-      models_count: "个模型", keys_count: "个密钥", expand_hint: "点击卡片展开"
+      models_count: "个模型", keys_count: "个密钥", expand_hint: "点击卡片展开",
+      context: "上下文", models: "模型", add_model: "添加模型", preset: "预设",
+      preset_hint: "选择常见服务商可自动填入类型和 base URL。",
+      models_hint: "上下文可选（通过 GET /v1/models 暴露）。",
+      shortcut_name: "快捷名称", uses: "使用", aliases_desc: "快捷名称让客户端用简短模型名路由到所选 provider/模型。",
+      aggregator: "母模型（综合）", moa_hint_sub: "子模型并行作答", moa_hint_agg: "综合出最终答复",
+      agg_prompt_ph: "留空用默认", reasoning_effort: "推理强度", moa_desc: "混合智能体：子模型并行作答，母模型综合出最终答复。", reason_def: "默认", reason_none: "无", reason_low: "低", reason_medium: "中", reason_high: "高", reason_vhigh: "极高", default_reasoning: "默认推理档位", reasoning_hint: "未单独设置时各 agent 使用此档位。"
     }
   };
   function t(k) { return (I18N[LANG] && I18N[LANG][k]) || I18N.en[k] || k; }
@@ -358,63 +373,100 @@
     $("#ed-key").addEventListener("input", markDirty); $("#ed-rpm").addEventListener("input", markDirty);
   }
 
+  var PRESETS=[
+    {n:"(custom)",type:"",url:""},{n:"OpenAI",type:"openai_like",url:"https://api.openai.com/v1"},
+    {n:"DeepSeek",type:"openai_like",url:"https://api.deepseek.com/v1"},
+    {n:"Moonshot Kimi",type:"openai_like",url:"https://api.moonshot.cn/v1"},
+    {n:"Zhipu GLM",type:"openai_like",url:"https://open.bigmodel.cn/api/paas/v4"},
+    {n:"Alibaba Qwen",type:"openai_like",url:"https://dashscope.aliyuncs.com/compatible-mode/v1"},
+    {n:"Google Gemini",type:"gemini",url:"https://generativelanguage.googleapis.com/v1beta"},
+    {n:"Anthropic",type:"anthropic",url:"https://api.anthropic.com"}
+  ];
   function provNames(){ return Object.keys(raw.providers||{}); }
+  function provModels(name){ var p=(raw.providers||{})[name]||{}; return ((p.models||[]).map(function(m){return typeof m==="object"?(m.name||""):m;})).filter(Boolean); }
+  function provOpts(sel){ return '<option value="">'+t("pick_provider")+'</option>'+provNames().map(function(n){return '<option '+(n===sel?'selected':'')+'>'+esc(n)+'</option>';}).join(""); }
+  function modelOpts(pn,sel){ var ms=pn?provModels(pn):[]; var o=ms.map(function(m){return '<option '+(m===sel?'selected':'')+'>'+esc(m)+'</option>';}).join(""); return o||'<option value="">'+t("no_models")+'</option>'; }
+  function reasonOpts(sel){ return ["none","low","medium","high"].map(function(r){return '<option '+(r===sel?'selected':'')+'>'+r+'</option>';}).join(""); }
+  function presetOpts(type,url){ var sel=""; PRESETS.forEach(function(p){ if(type&&url&&p.type===type&&p.url===url) sel=p.n; }); return PRESETS.map(function(p){ return '<option '+(p.n===sel?'selected':'')+'>'+p.n+'</option>';}).join(""); }
+
   function renderProvList() {
     var names=provNames();
     if(!names.length){ $("#prov-list").innerHTML='<div class="empty">'+t("no_provider")+'</div>'; return; }
     var h="";
     names.forEach(function(name){ var p=raw.providers[name]||{}; var open=expanded.prov.has(name);
-      h+='<div class="subcard '+(open?'open':'')+'" data-prov="'+esc(name)+'"><div class="sc-head"><svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg><span class="sc-title">'+esc(name)+'</span><span class="sc-meta"><span class="chip gray">'+esc(p.type||"openai_like")+'</span>'+(p.models||[]).length+' '+t("models_count")+' · '+(p.keys||[]).length+' '+t("keys_count")+'</span><button class="btn danger ghost small ed-pdel" data-name="'+esc(name)+'">'+t("del")+'</button></div>';
-      h+='<div class="sc-body"><div class="field"><label>Name</label><input class="ed-pname" type="text" value="'+esc(name)+'" style="max-width:240px;"></div><div class="grid2"><div class="field"><label>'+t("type")+'</label><select class="ed-ptype">'+['openai_like','anthropic','gemini'].map(function(tt){return '<option '+((p.type||'openai_like')===tt?'selected':'')+'>'+tt+'</option>';}).join('')+'</select></div><div class="field"><label>'+t("base_url")+'</label><input class="ed-purl" type="text" value="'+esc(p.base_url||'')+'"></div></div>';
-      h+='<div class="field"><label>'+t("keys_per_line")+'</label><textarea class="ed-pkeys" rows="2">'+esc((p.keys||[]).join('\n'))+'</textarea></div>';
-      h+='<div class="field"><label>'+t("models_per_line")+'</label><textarea class="ed-pmodels" rows="2">'+esc((p.models||[]).join('\n'))+'</textarea></div>';
+      h+='<div class="subcard '+(open?'open':'')+'" data-prov="'+esc(name)+'"><div class="sc-head"><svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg><span class="sc-title">'+esc(name)+'</span><span class="sc-meta"><span class="chip gray">'+esc(p.type||"openai_like")+'</span> '+(p.models||[]).length+' '+t("models_count")+'</span><button class="btn danger ghost small ed-pdel">'+t("del")+'</button></div>';
+      h+='<div class="sc-body"><div class="field"><label>Name</label><input class="ed-pname" type="text" value="'+esc(name)+'" style="max-width:260px;"></div>';
+      h+='<div class="field"><label>'+t("preset")+'</label><select class="ed-preset">'+presetOpts(p.type,p.base_url)+'</select><div class="hint">'+t("preset_hint")+'</div></div>';
+      h+='<div class="grid2"><div class="field"><label>'+t("type")+'</label><select class="ed-ptype">'+['openai_like','anthropic','gemini'].map(function(tt){return '<option '+((p.type||'openai_like')===tt?'selected':'')+'>'+tt+'</option>';}).join('')+'</select></div><div class="field"><label>'+t("base_url")+'</label><input class="ed-purl" type="text" value="'+esc(p.base_url||'')+'"></div></div>';
+      h+='<div class="field"><label>'+t("keys_per_line")+'</label><textarea class="ed-pkeys" rows="2" placeholder="sk-...">'+esc((p.keys||[]).join('\n'))+'</textarea></div>';
+      h+='<div class="field"><label>'+t("models")+'</label><div class="ed-mlist">';
+      (p.models||[]).forEach(function(m,i){ var mn=(typeof m==="object")?(m.name||""):m; var mc=(typeof m==="object")?(m.context||""):""; h+='<div class="row-inline" style="margin-bottom:6px;" data-mi="'+i+'"><input class="ed-mname" type="text" value="'+esc(mn)+'" placeholder="model name" style="flex:1;"><input class="ed-mctx" type="number" value="'+esc(mc)+'" placeholder="'+t("context")+'" style="max-width:150px;"><button class="btn danger ghost small ed-mdel">'+t("del")+'</button></div>'; });
+      h+='</div><button class="btn subtle small ed-madd" style="margin-top:6px;">'+t("add_model")+'</button><div class="hint">'+t("models_hint")+'</div></div>';
       h+='<div class="row-inline"><label class="switch"><input class="ed-pres" type="checkbox" '+(p.supports_responses?'checked':'')+'><span class="slider"></span></label><span style="font-size:13px;">'+t("supports_responses_lbl")+'</span></div></div></div>';
     });
     $("#prov-list").innerHTML=h;
-    $$("#prov-list .subcard").forEach(function(sc){
-      var name=sc.getAttribute("data-prov");
+    $$("#prov-list .subcard").forEach(function(sc){ var name=sc.getAttribute("data-prov");
       sc.querySelector(".sc-head").addEventListener("click", function(e){ if(e.target.closest("button")) return; if(expanded.prov.has(name)){expanded.prov.delete(name);sc.classList.remove("open");}else{expanded.prov.add(name);sc.classList.add("open");} });
-      sc.querySelector(".ed-pdel").addEventListener("click", function(){ var n=name; askConfirm(t("delete"), t("confirm_delete"), function(){ delete raw.providers[n]; expanded.prov.delete(n); renderProvList(); markDirty(); }); });
+      sc.querySelector(".ed-pdel").addEventListener("click", function(){ askConfirm(t("delete"), t("confirm_delete"), function(){ delete raw.providers[name]; expanded.prov.delete(name); renderProvList(); markDirty(); }); });
+      sc.querySelector(".ed-preset").addEventListener("change", function(){ var v=this.value, pp=PRESETS.filter(function(x){return x.n===v;})[0]; if(pp&&pp.type){ sc.querySelector(".ed-ptype").value=pp.type; sc.querySelector(".ed-purl").value=pp.url; } markDirty(); });
+      sc.querySelector(".ed-madd").addEventListener("click", function(){ var mm=raw.providers[name]; mm.models=mm.models||[]; mm.models.push({name:"",context:""}); expanded.prov.add(name); renderProvList(); markDirty(); });
     });
+    $$("#prov-list .ed-mlist .row-inline").forEach(function(r){ r.querySelector(".ed-mdel").addEventListener("click", function(){ var card=r.closest(".subcard"); var pn=card.getAttribute("data-prov"); var idx=parseInt(r.getAttribute("data-mi"),10); raw.providers[pn].models.splice(idx,1); renderProvList(); markDirty(); }); });
   }
   function renderAliasList() {
     var names=Object.keys(raw.aliases||{});
     if(!names.length){ $("#alias-list").innerHTML='<div class="empty">'+t("no_alias")+'</div>'; return; }
     var h="";
-    names.forEach(function(a){ h+='<div class="row-inline" data-alias="'+esc(a)+'" style="margin-bottom:8px;"><input class="ed-aname" type="text" value="'+esc(a)+'" style="max-width:200px;"><span style="color:var(--faint)">→</span><input class="ed-atarget" type="text" value="'+esc(raw.aliases[a]||'')+'" placeholder="provider/model" style="flex:1;"><button class="btn danger ghost small ed-adel">'+t("del")+'</button></div>'; });
+    names.forEach(function(a){ var tgt=(raw.aliases[a]||"").split("/"); var tp=tgt[0]||""; var tm=tgt.slice(1).join("/")||"";
+      h+='<div class="row-inline" data-alias="'+esc(a)+'" style="margin-bottom:12px;gap:6px;align-items:flex-end;">';
+      h+='<div><label class="fld">'+t("shortcut_name")+'</label><input class="ed-aname" type="text" value="'+esc(a)+'" style="width:150px;"></div>';
+      h+='<span style="padding-bottom:9px;color:var(--faint);">'+t("uses")+'</span>';
+      h+='<div><label class="fld">Provider</label><select class="ed-aprov" style="width:150px;">'+provOpts(tp)+'</select></div>';
+      h+='<div><label class="fld">Model</label><select class="ed-amodel" style="width:180px;">'+modelOpts(tp,tm)+'</select></div>';
+      h+='<button class="btn danger ghost small ed-adel" style="margin-bottom:0;">'+t("del")+'</button></div>';
+    });
     $("#alias-list").innerHTML=h;
-    $$("#alias-list .row-inline").forEach(function(r){ r.querySelector(".ed-adel").addEventListener("click", function(){ var a=r.getAttribute("data-alias"); askConfirm(t("delete"), t("confirm_delete"), function(){ delete raw.aliases[a]; renderAliasList(); markDirty(); }); }); });
+    $$("#alias-list .row-inline").forEach(function(r){
+      r.querySelector(".ed-aprov").addEventListener("change", function(){ var pv=this.value; r.querySelector(".ed-amodel").innerHTML=modelOpts(pv,(provModels(pv)[0]||"")); markDirty(); });
+      r.querySelector(".ed-adel").addEventListener("click", function(){ var a=r.getAttribute("data-alias"); askConfirm(t("delete"), t("confirm_delete"), function(){ delete raw.aliases[a]; renderAliasList(); markDirty(); }); });
+    });
   }
   function renderMoaList() {
     var names=Object.keys(raw.moa||{});
     if(!names.length){ $("#moa-list").innerHTML='<div class="empty">'+t("no_moa")+'</div>'; return; }
-    var pn=provNames();
-    function opts(sel){ return '<option value="">'+t("pick_provider")+'</option>'+pn.map(function(n){return '<option '+(sel===n?'selected':'')+'>'+esc(n)+'</option>';}).join(''); }
     var h="";
     names.forEach(function(n){ var m=raw.moa[n]||{}; var open=expanded.moa.has(n);
-      h+='<div class="subcard '+(open?'open':'')+'" data-moa="'+esc(n)+'"><div class="sc-head"><svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg><span class="sc-title">moa:'+esc(n)+'</span><span class="sc-meta">'+(m.proposers||[]).length+' proposers</span><button class="btn danger ghost small ed-mdel">'+t("del")+'</button></div>';
-      h+='<div class="sc-body"><div class="field"><label>Name</label><input class="ed-mname" type="text" value="'+esc(n)+'" style="max-width:240px;"></div><div class="field"><label>'+t("proposers")+'</label><div class="ed-props">';
-      (m.proposers||[]).forEach(function(pr,i){ h+='<div class="row-inline" style="margin-bottom:6px;" data-pi="'+i+'"><select class="ed-pprov" style="max-width:180px;">'+opts(pr.provider)+'</select><input class="ed-pmodel" type="text" value="'+esc(pr.model||'')+'" placeholder="model" style="flex:1;max-width:240px;"><button class="btn danger ghost small ed-ppdel">'+t("del")+'</button></div>'; });
+      h+='<div class="subcard '+(open?'open':'')+'" data-moa="'+esc(n)+'"><div class="sc-head"><svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg><span class="sc-title">moa:'+esc(n)+'</span><span class="sc-meta">'+(m.proposers||[]).length+' '+t("proposers").toLowerCase()+'</span><button class="btn danger ghost small ed-mdel">'+t("del")+'</button></div>';
+      h+='<div class="sc-body"><div class="field"><label>Name</label><input class="ed-mname" type="text" value="'+esc(n)+'" style="max-width:260px;"></div>';
+      h+='<div class="field"><label>'+t("default_reasoning")+'</label><select class="ed-mdefault" style="max-width:200px;">'+reasonDefOpts(m.default_reasoning_effort||"none")+'</select><div class="hint">'+t("reasoning_hint")+'</div></div>';
+      h+='<div class="field"><label>'+t("proposers")+' <span style="text-transform:none;color:var(--faint);font-weight:400;">('+t("moa_hint_sub")+')</span></label><div class="ed-props">';
+      (m.proposers||[]).forEach(function(pr,i){
+        h+='<div class="row-inline" style="margin-bottom:6px;gap:6px;" data-pi="'+i+'"><select class="ed-pprov" style="max-width:150px;">'+provOpts(pr.provider)+'</select><select class="ed-pmodel" style="max-width:170px;">'+modelOpts(pr.provider,pr.model)+'</select><select class="ed-preason" style="max-width:120px;" title="'+t("reasoning_effort")+'">'+reasonAgentOpts(pr.reasoning_effort||"default")+'</select><button class="btn danger ghost small ed-ppdel">'+t("del")+'</button></div>';
+      });
       h+='</div><button class="btn subtle small ed-ppadd" style="margin-top:6px;">'+t("add_proposer")+'</button></div>';
       var ag=m.aggregator||{};
-      h+='<div class="grid2" style="margin-top:10px;"><div class="field" style="margin:0;"><label>'+t("agg_provider")+'</label><select class="ed-agprov">'+opts(ag.provider)+'</select></div><div class="field" style="margin:0;"><label>'+t("agg_model")+'</label><input class="ed-agmodel" type="text" value="'+esc(ag.model||'')+'"></div></div>';
-      h+='<div class="field" style="margin-top:10px;"><label>'+t("agg_prompt")+'</label><textarea class="ed-agprompt" rows="2">'+esc(m.aggregator_prompt||'')+'</textarea></div></div></div>';
+      h+='<div class="field" style="margin-top:14px;"><label>'+t("aggregator")+' <span style="text-transform:none;color:var(--faint);font-weight:400;">('+t("moa_hint_agg")+')</span></label><div class="row-inline" style="gap:6px;"><select class="ed-agprov" style="max-width:150px;">'+provOpts(ag.provider)+'</select><select class="ed-agmodel" style="max-width:170px;">'+modelOpts(ag.provider,ag.model)+'</select><select class="ed-agreason" style="max-width:120px;" title="'+t("reasoning_effort")+'">'+reasonAgentOpts(ag.reasoning_effort||"default")+'</select></div></div>';
+      h+='<div class="field" style="margin-top:10px;"><label>'+t("agg_prompt")+'</label><textarea class="ed-agprompt" rows="2" placeholder="'+t("agg_prompt_ph")+'">'+esc(m.aggregator_prompt||'')+'</textarea></div></div></div>';
     });
     $("#moa-list").innerHTML=h;
     $$("#moa-list .subcard").forEach(function(sc){ var n=sc.getAttribute("data-moa");
       sc.querySelector(".sc-head").addEventListener("click", function(e){ if(e.target.closest("button")) return; if(expanded.moa.has(n)){expanded.moa.delete(n);sc.classList.remove("open");}else{expanded.moa.add(n);sc.classList.add("open");} });
       sc.querySelector(".ed-mdel").addEventListener("click", function(){ askConfirm(t("delete"), t("confirm_delete"), function(){ delete raw.moa[n]; expanded.moa.delete(n); renderMoaList(); markDirty(); }); });
-      sc.querySelector(".ed-ppadd").addEventListener("click", function(){ var mm=raw.moa[n]; mm.proposers=mm.proposers||[]; mm.proposers.push({provider:"",model:""}); expanded.moa.add(n); renderMoaList(); markDirty(); });
-      $$("#moa-list .ed-props .row-inline").forEach(function(r){ r.querySelector(".ed-ppdel").addEventListener("click", function(){ /* removed via collect; for simplicity, remove from raw by index of parent moa */ var card=r.closest(".subcard"); var mn=card.getAttribute("data-moa"); var idx=parseInt(r.getAttribute("data-pi"),10); raw.moa[mn].proposers.splice(idx,1); renderMoaList(); markDirty(); }); });
+      sc.querySelector(".ed-ppadd").addEventListener("click", function(){ var mm=raw.moa[n]; mm.proposers=mm.proposers||[]; mm.proposers.push({provider:"",model:"",reasoning_effort:"none"}); expanded.moa.add(n); renderMoaList(); markDirty(); });
     });
+    $$("#moa-list .ed-props .row-inline").forEach(function(r){
+      r.querySelector(".ed-pprov").addEventListener("change", function(){ var pv=this.value; r.querySelector(".ed-pmodel").innerHTML=modelOpts(pv,(provModels(pv)[0]||"")); markDirty(); });
+      r.querySelector(".ed-ppdel").addEventListener("click", function(){ var card=r.closest(".subcard"); var mn=card.getAttribute("data-moa"); var idx=parseInt(r.getAttribute("data-pi"),10); raw.moa[mn].proposers.splice(idx,1); renderMoaList(); markDirty(); });
+    });
+    $$("#moa-list .ed-agprov").forEach(function(sel){ sel.addEventListener("change", function(){ var pv=this.value; var card=sel.closest(".subcard"); card.querySelector(".ed-agmodel").innerHTML=modelOpts(pv,(provModels(pv)[0]||"")); markDirty(); }); });
   }
 
   $("#add-prov").addEventListener("click", function(){ var n="provider_"+Date.now(); ensureSections(); raw.providers[n]={type:"openai_like",base_url:"",keys:[],models:[],supports_responses:false}; expanded.prov.add(n); renderProvList(); markDirty(); });
-  $("#add-alias").addEventListener("click", function(){ var n="alias_"+Date.now(); ensureSections(); raw.aliases[n]="provider/model"; renderAliasList(); markDirty(); });
-  $("#add-moa").addEventListener("click", function(){ var n="pipeline_"+Date.now(); ensureSections(); raw.moa[n]={proposers:[{provider:"",model:""}],aggregator:{provider:"",model:""}}; expanded.moa.add(n); renderMoaList(); markDirty(); });
+  $("#add-alias").addEventListener("click", function(){ var n="alias_"+Date.now(); ensureSections(); raw.aliases[n]=""; renderAliasList(); markDirty(); });
+  $("#add-moa").addEventListener("click", function(){ var n="pipeline_"+Date.now(); ensureSections(); raw.moa[n]={proposers:[{provider:"",model:"",reasoning_effort:"none"}],aggregator:{provider:"",model:"",reasoning_effort:"none"}}; expanded.moa.add(n); renderMoaList(); markDirty(); });
 
   document.addEventListener("input", function(e){ if(e.target.closest("#panel-config")) markDirty(); });
-  document.addEventListener("change", function(e){ if(e.target.closest("#panel-config") && !e.target.classList.contains("ed-auth")) markDirty(); });
+  document.addEventListener("change", function(e){ if(e.target.closest("#panel-config")) markDirty(); });
   document.addEventListener("keydown", function(e){ if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==="s"){ e.preventDefault(); if(dirty) saveConfig(); } });
   window.addEventListener("beforeunload", function(e){ if(dirty){ e.preventDefault(); e.returnValue=""; } });
 
@@ -426,10 +478,12 @@
     if(authOn && !key){ key="sk-gw-"+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2); }
     raw.server.master_key=authOn?key:""; raw.rate_limit.requests_per_minute=parseInt($("#ed-rpm").value,10)||0;
     var provs={};
-    $$("#prov-list .subcard").forEach(function(el){ var name=el.querySelector(".ed-pname")?el.querySelector(".ed-pname").value.trim():""; if(!name){ name=el.getAttribute("data-prov"); } if(!name) return; provs[name]={type:el.querySelector(".ed-ptype").value,base_url:el.querySelector(".ed-purl").value.trim(),keys:el.querySelector(".ed-pkeys").value.split("\n").map(function(s){return s.trim();}).filter(Boolean),models:el.querySelector(".ed-pmodels").value.split("\n").map(function(s){return s.trim();}).filter(Boolean),supports_responses:el.querySelector(".ed-pres").checked}; });
+    $$("#prov-list .subcard").forEach(function(el){ var name=el.querySelector(".ed-pname").value.trim()||el.getAttribute("data-prov"); if(!name) return;
+      var models=[]; el.querySelectorAll(".ed-mlist .row-inline").forEach(function(r){ var mn=r.querySelector(".ed-mname").value.trim(); var mc=r.querySelector(".ed-mctx").value.trim(); if(mn){ models.push(mc?{name:mn,context:parseInt(mc,10)}:mn); } });
+      provs[name]={type:el.querySelector(".ed-ptype").value,base_url:el.querySelector(".ed-purl").value.trim(),keys:el.querySelector(".ed-pkeys").value.split("\n").map(function(z){return z.trim();}).filter(Boolean),models:models,supports_responses:el.querySelector(".ed-pres").checked}; });
     raw.providers=provs;
-    var al={}; $$("#alias-list .row-inline").forEach(function(el){ var a=el.querySelector(".ed-aname").value.trim(), tv=el.querySelector(".ed-atarget").value.trim(); if(a&&tv) al[a]=tv; }); raw.aliases=al;
-    var moa={}; $$("#moa-list .subcard").forEach(function(el){ var n=el.querySelector(".ed-mname")?el.querySelector(".ed-mname").value.trim():""; if(!n){ n=el.getAttribute("data-moa"); } var props=[]; $$(".ed-props .row-inline", el).forEach(function(p){ var pv=p.querySelector(".ed-pprov").value, mv=p.querySelector(".ed-pmodel").value.trim(); if(pv&&mv) props.push({provider:pv,model:mv}); }); var entry={proposers:props,aggregator:{provider:el.querySelector(".ed-agprov").value,model:el.querySelector(".ed-agmodel").value.trim()}}; var ap=el.querySelector(".ed-agprompt").value; if(ap&&ap.trim()) entry.aggregator_prompt=ap.trim(); moa[n]=entry; }); raw.moa=moa;
+    var al={}; $$("#alias-list .row-inline").forEach(function(el){ var a=el.querySelector(".ed-aname").value.trim(); var pv=el.querySelector(".ed-aprov").value; var mv=el.querySelector(".ed-amodel").value; if(a&&pv&&mv) al[a]=pv+"/"+mv; }); raw.aliases=al;
+    var moa={}; $$("#moa-list .subcard").forEach(function(el){ var n=el.querySelector(".ed-mname").value.trim()||el.getAttribute("data-moa"); var props=[]; el.querySelectorAll(".ed-props .row-inline").forEach(function(p){ var pv=p.querySelector(".ed-pprov").value, mv=p.querySelector(".ed-pmodel").value; var re=p.querySelector(".ed-preason").value; if(pv&&mv){ var o={provider:pv,model:mv}; if(re&&re!=="default") o.reasoning_effort=re; props.push(o); } }); var entry={proposers:props,aggregator:{provider:el.querySelector(".ed-agprov").value,model:el.querySelector(".ed-agmodel").value}}; var md=el.querySelector(".ed-mdefault").value; if(md&&md!=="none") entry.default_reasoning_effort=md; var are=el.querySelector(".ed-agreason").value; if(are&&are!=="default") entry.aggregator.reasoning_effort=are; var ap=el.querySelector(".ed-agprompt").value; if(ap&&ap.trim()) entry.aggregator_prompt=ap.trim(); moa[n]=entry; }); raw.moa=moa;
   }
   function saveConfig() {
     collectConfig();
