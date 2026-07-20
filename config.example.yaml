@@ -104,6 +104,26 @@ moa:
     # aggregator_prompt: "custom synthesis prompt (optional)"
 
 # ---------------------------------------------------------------------
+# Planner-Worker (independent of MOA): a strong planner decomposes the task,
+# cheap workers execute subtasks in parallel, the planner synthesizes.
+# Trigger with model: pw:<name>
+# ---------------------------------------------------------------------
+planner_worker:
+  solve:
+    planner:
+      provider: openai
+      model: gpt-4o
+      reasoning_effort: high      # strong model: only planning + synthesis
+    workers:                      # cheap models: grunt work
+      - provider: deepseek
+        model: deepseek-chat
+        reasoning_effort: low
+      - provider: openai
+        model: gpt-4o-mini
+    max_rounds: 1                 # planner may re-plan over worker results
+    max_concurrency: 4
+
+# ---------------------------------------------------------------------
 # rate-limit: per (caller key + model) token-bucket limit (in-process)
 # ---------------------------------------------------------------------
 rate_limit:

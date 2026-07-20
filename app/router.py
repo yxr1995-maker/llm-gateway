@@ -25,6 +25,7 @@ from .protocol import (
     anthropic_req_to_chat, chat_resp_to_anthropic, chat_stream_to_anthropic,
 )
 from .moa import is_moa, moa_pipeline_name, run_moa
+from .planner_worker import is_pw, pw_name, run_planner_worker
 
 logger = logging.getLogger("llm-gateway.router")
 
@@ -140,6 +141,8 @@ async def chat_completions(request: Request):
     stream = bool(body.get("stream"))
     if is_moa(model):
         return await _handle_moa(request, "chat", body, model)
+    if is_pw(model):
+        return await _handle_pw(request, "chat", body, model)
     cfg = request.app.state.config
 
     try:
@@ -267,6 +270,10 @@ async def list_models(request: Request):
         data.append(
             {"id": f"moa:{mname}", "object": "model", "created": created, "owned_by": "moa"}
         )
+    for pname in (cfg.raw.get("planner_worker") or {}):
+        data.append(
+            {"id": f"pw:{pname}", "object": "model", "created": created, "owned_by": "planner_worker"}
+        )
     return {"object": "list", "data": data}
 
 
@@ -362,6 +369,55 @@ async def _handle_moa(request: Request, wire: str, body: dict, model: str):
     return _sse_response(_safe_stream(conv, tail))
 
 
+async def _handle_pw(request: Request, wire: str, body: dict, model: str):
+    """Planner-Worker handler: normalize to chat -> run_planner_worker -> convert back."""
+    _refresh_runtime(request)
+    caller = _caller_key(request)
+    name = pw_name(model)
+    stream = bool(body.get("stream"))
+    if wire == "responses":
+        chat_body = responses_req_to_chat(body)
+    elif wire == "anthropic":
+        chat_body = anthropic_req_to_chat(body)
+    else:
+        chat_body = dict(body)
+    t0 = time.monotonic()
+    try:
+        result = await run_planner_worker(request.app.state.config, request.app.state.providers,
+                                          request.app.state.pool, chat_body, name, stream)
+    except KeyError:
+        return _error(404, f"Planner-Worker pipeline `{name}` does not exist",
+                      "invalid_request_error", "model_not_found")
+    except Exception as exc:
+        await _record_stats(request, api_key=caller, model=model, provider="planner_worker",
+                            latency_ms=int((time.monotonic() - t0) * 1000), status=502, stream=int(stream))
+        return _error(502, f"Planner-Worker failed: {exc!r}"[:300], "upstream_error", "upstream_error")
+    is_stream = not isinstance(result, (dict, httpx.Response))
+    if not is_stream:
+        chat_data = result.json() if isinstance(result, httpx.Response) else result
+        if wire == "responses":
+            out = chat_resp_to_responses(chat_data, model)
+        elif wire == "anthropic":
+            out = chat_resp_to_anthropic(chat_data, model)
+        else:
+            out = _sanitize_chat_output(chat_data)
+        pt = out.get("usage", {}).get("input_tokens", 0) if wire != "chat" else 0
+        ct = out.get("usage", {}).get("output_tokens", 0) if wire != "chat" else 0
+        await _record_stats(request, api_key=caller, model=model, provider="planner_worker",
+                            prompt_tokens=pt, completion_tokens=ct, total_tokens=pt + ct,
+                            latency_ms=int((time.monotonic() - t0) * 1000), status=200, stream=0)
+        return JSONResponse(content=out)
+    if wire == "responses":
+        conv = chat_stream_to_responses(result, model, True); tail = _responses_error_tail(model)
+    elif wire == "anthropic":
+        conv = chat_stream_to_anthropic(result, model); tail = _anthropic_error_tail()
+    else:
+        conv = _chat_ensure_done(result); tail = _chat_error_tail()
+    await _record_stats(request, api_key=caller, model=model, provider="planner_worker",
+                        latency_ms=int((time.monotonic() - t0) * 1000), status=200, stream=1)
+    return _sse_response(_safe_stream(conv, tail))
+
+
 async def _dispatch_unified(request: Request, wire: str) -> JSONResponse | StreamingResponse:
     """Unified dispatch for the responses / anthropic input faces.
 
@@ -386,6 +442,8 @@ async def _dispatch_unified(request: Request, wire: str) -> JSONResponse | Strea
     stream = bool(body.get("stream"))
     if is_moa(model):
         return await _handle_moa(request, wire, body, model)
+    if is_pw(model):
+        return await _handle_pw(request, wire, body, model)
     cfg = request.app.state.config
 
     try:

@@ -112,6 +112,19 @@ moa:
         model: gpt-4o
         modality: image
         prompt: a dog
+planner_worker:
+  solve:
+    planner:
+      provider: openai
+      model: gpt-4o
+      reasoning_effort: high
+    workers:
+      - provider: openai
+        model: gpt-4o
+      - provider: anthropic
+        model: claude-sonnet-4-5
+    max_rounds: 1
+    max_concurrency: 2
 rate_limit:
   requests_per_minute: 0
 """)
@@ -146,6 +159,7 @@ rate_limit:
         ctx = {x["id"]: x.get("context_window") for x in r.json()["data"]}
         check("model context_window exposed", ctx.get("gpt-4o") == 128000, str(ctx))
         check("models include moa pipeline", "moa:default" in ids, str(ids))
+        check("models include pw pipeline", "pw:solve" in ids, str(ids))
 
         # 4 openai non-stream (first key sk-fake1 fails -> auto-failover sk-good1)
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
@@ -261,6 +275,22 @@ rate_limit:
                                 "messages": [{"role": "user", "content": "hi"}]}) as st:
             txt = b"".join(st.iter_bytes()).decode("utf-8", "ignore")
         check("MOA stream has [DONE]", "data: [DONE]" in txt, txt[:100])
+
+        # 11g planner-worker: planner decomposes -> workers execute -> synthesize
+        r = httpx.post(f"{BASE}/chat/completions", headers=h,
+                       json={"model": "pw:solve", "messages": [{"role": "user", "content": "build a demo"}]})
+        check("PW chat 200", r.status_code == 200, str(r.status_code)+r.text[:120])
+        if r.status_code == 200:
+            check("PW synthesized output", r.json()["choices"][0]["message"].get("content") == "SYNTHESIZED", r.text[:160])
+
+        # 11g2 planner-worker via responses face
+        r = httpx.post(f"{BASE}/responses", headers=h, json={"model": "pw:solve", "input": "build a demo"})
+        check("PW responses completed", r.status_code == 200 and r.json().get("status") == "completed", str(r.status_code)+r.text[:120])
+
+        # 11g3 unknown pw pipeline -> 404
+        r = httpx.post(f"{BASE}/chat/completions", headers=h,
+                       json={"model": "pw:nope", "messages": [{"role": "user", "content": "x"}]})
+        check("PW unknown pipeline 404", r.status_code == 404, str(r.status_code))
 
         # 11f1 multimodal staged pipeline (image -> vision -> text)
         r = httpx.post(f"{BASE}/chat/completions", headers=h,

@@ -202,13 +202,22 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(500, {"error": {"message": f"key {key} exploded",
                                                    "type": "server_error"}})
         model = body.get("model", "?")
+        msgs = body.get("messages") or []
+        blob = " ".join((m.get("content") if isinstance(m.get("content"), str)
+                         else "".join(p.get("text","") for p in (m.get("content") or []) if isinstance(p, dict)))
+                        for m in msgs if isinstance(m, dict)).lower()
+        if "decompose" in blob:
+            content = '{"subtasks":[{"id":1,"description":"sub A"},{"id":2,"description":"sub B"}]}'
+        elif "synthesize" in blob:
+            content = "SYNTHESIZED"
+        else:
+            content = "".join(OPENAI_WORDS)
         if not stream:
             return self._send_json(200, {
                 "id": "chatcmpl-mock1", "object": "chat.completion", "created": int(time.time()),
                 "model": model,
                 "choices": [{"index": 0,
-                             "message": {"role": "assistant",
-                                         "content": "".join(OPENAI_WORDS)},
+                             "message": {"role": "assistant", "content": content},
                              "finish_reason": "stop"}],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
             })
