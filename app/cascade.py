@@ -120,8 +120,21 @@ async def run_cascade(cfg, providers, pool, chat_body: dict, name: str, stream: 
         idx = int(pipe.get("default_tier", len(tiers) - 1))
     idx = max(0, min(int(idx), len(tiers) - 1))
     agent = tiers[idx]
+    t1_verify = bool(pipe.get("t1_verify")) or pipe.get("strictness") == "strict"
 
-    # 2) run that tier
+    # 2) run that tier. Stream it directly when possible (first-token latency
+    #    ~= model TTFT instead of waiting for the full answer).
+    can_stream = bool(stream) and k <= 1 and not (t1_verify and idx < len(tiers) - 1)
+    if can_stream:
+        try:
+            res = await _call_text(agent, providers, pool,
+                                   [{"role": "user", "content": user_text}], sem, default_effort, want_stream=True)
+            # res is a chat SSE async iterator from the provider -> forward to the client
+            return res
+        except Exception as exc:
+            logger.warning("cascade stream tier %s failed, falling back: %r", agent.get("name") or idx, exc)
+
+    # non-stream path (also the fallback)
     try:
         cand = await tier_answer(agent)
     except Exception as exc:
@@ -129,7 +142,6 @@ async def run_cascade(cfg, providers, pool, chat_body: dict, name: str, stream: 
         cand = ""
 
     # 3) optional T1 verify/rewrite (strict) when a non-top tier was used
-    t1_verify = bool(pipe.get("t1_verify")) or pipe.get("strictness") == "strict"
     if t1_verify and idx < len(tiers) - 1 and cand:
         try:
             top = tiers[-1]

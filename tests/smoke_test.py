@@ -356,6 +356,13 @@ rate_limit:
                        json={"model": "cascade:solve", "input": "hi", "reasoning": {"effort": "low"}})
         check("cascade responses effort=low completed", r.status_code == 200 and r.json().get("status") == "completed", r.text[:120])
 
+        # 11h1 cascade streams the chosen tier
+        with httpx.stream("POST", f"{BASE}/chat/completions", headers=h,
+                          json={"model": "cascade:solve", "stream": True, "reasoning_effort": "low",
+                                "messages": [{"role": "user", "content": "hi"}]}) as st:
+            txt = b"".join(st.iter_bytes()).decode("utf-8", "ignore")
+        check("cascade stream has chunk+DONE", "chat.completion.chunk" in txt and "data: [DONE]" in txt, txt[:100])
+
         # 11h2 cascade unknown -> 404
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
                        json={"model": "cascade:nope", "messages": [{"role": "user", "content": "x"}]})

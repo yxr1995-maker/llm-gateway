@@ -469,19 +469,30 @@ async def _handle_cascade(request: Request, wire: str, body: dict, model: str):
         await _record_stats(request, api_key=caller, model=model, provider="cascade",
                             latency_ms=int((time.monotonic() - t0) * 1000), status=502, stream=int(stream))
         return _error(502, f"Cascade failed: {exc!r}"[:300], "upstream_error", "upstream_error")
-    chat_data = result.json() if isinstance(result, httpx.Response) else result
+    is_stream = not isinstance(result, (dict, httpx.Response))
+    if not is_stream:
+        chat_data = result.json() if isinstance(result, httpx.Response) else result
+        if wire == "responses":
+            out = chat_resp_to_responses(chat_data, model)
+        elif wire == "anthropic":
+            out = chat_resp_to_anthropic(chat_data, model)
+        else:
+            out = _sanitize_chat_output(chat_data)
+        pt = out.get("usage", {}).get("input_tokens", 0) if wire != "chat" else 0
+        ct = out.get("usage", {}).get("output_tokens", 0) if wire != "chat" else 0
+        await _record_stats(request, api_key=caller, model=model, provider="cascade",
+                            prompt_tokens=pt, completion_tokens=ct, total_tokens=pt + ct,
+                            latency_ms=int((time.monotonic() - t0) * 1000), status=200, stream=0)
+        return JSONResponse(content=out)
     if wire == "responses":
-        out = chat_resp_to_responses(chat_data, model)
+        conv = chat_stream_to_responses(result, model, True); tail = _responses_error_tail(model)
     elif wire == "anthropic":
-        out = chat_resp_to_anthropic(chat_data, model)
+        conv = chat_stream_to_anthropic(result, model); tail = _anthropic_error_tail()
     else:
-        out = _sanitize_chat_output(chat_data)
-    pt = out.get("usage", {}).get("input_tokens", 0) if wire != "chat" else 0
-    ct = out.get("usage", {}).get("output_tokens", 0) if wire != "chat" else 0
+        conv = _chat_ensure_done(result); tail = _chat_error_tail()
     await _record_stats(request, api_key=caller, model=model, provider="cascade",
-                        prompt_tokens=pt, completion_tokens=ct, total_tokens=pt + ct,
-                        latency_ms=int((time.monotonic() - t0) * 1000), status=200, stream=0)
-    return JSONResponse(content=out)
+                        latency_ms=int((time.monotonic() - t0) * 1000), status=200, stream=1)
+    return _sse_response(_safe_stream(conv, tail))
 
 
 async def _dispatch_unified(request: Request, wire: str) -> JSONResponse | StreamingResponse:
