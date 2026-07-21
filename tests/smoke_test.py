@@ -345,12 +345,16 @@ rate_limit:
                        json={"model": "pw:nope", "messages": [{"role": "user", "content": "x"}]})
         check("PW unknown pipeline 404", r.status_code == 404, str(r.status_code))
 
-        # 11h cascade: route -> L0 answer -> verify accept
+        # 11h cascade is effort-driven: effort=low -> L0(openai); no effort -> default top(anthropic)
+        r = httpx.post(f"{BASE}/chat/completions", headers=h,
+                       json={"model": "cascade:solve", "messages": [{"role": "user", "content": "hi"}], "reasoning_effort": "low"})
+        check("cascade effort=low -> L0", r.status_code == 200 and r.json()["choices"][0]["message"].get("content") == "Hello from mock openai!", r.text[:160])
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
                        json={"model": "cascade:solve", "messages": [{"role": "user", "content": "hi"}]})
-        check("cascade chat 200", r.status_code == 200, str(r.status_code)+r.text[:120])
-        if r.status_code == 200:
-            check("cascade accepted at L0", r.json()["choices"][0]["message"].get("content") == "Hello from mock openai!", r.text[:160])
+        check("cascade no effort -> top T1", r.status_code == 200 and r.json()["choices"][0]["message"].get("content") == "Hi from mock claude!", r.text[:160])
+        r = httpx.post(f"{BASE}/responses", headers=h,
+                       json={"model": "cascade:solve", "input": "hi", "reasoning": {"effort": "low"}})
+        check("cascade responses effort=low completed", r.status_code == 200 and r.json().get("status") == "completed", r.text[:120])
 
         # 11h2 cascade unknown -> 404
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
@@ -364,9 +368,9 @@ rate_limit:
         check("cache first MISS", r1.headers.get("x-cache") == "MISS", r1.headers.get("x-cache"))
         check("cache second HIT", r2.headers.get("x-cache") == "HIT", r2.headers.get("x-cache"))
 
-        # 11j cascade t1_verify: accepted at L0 -> T1 (anthropic) rewrites
+        # 11j cascade t1_verify: effort=low (non-top) -> T1 (anthropic) rewrites
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
-                       json={"model": "cascade:solve_strict", "messages": [{"role": "user", "content": "hi"}]})
+                       json={"model": "cascade:solve_strict", "messages": [{"role": "user", "content": "hi"}], "reasoning_effort": "low"})
         check("cascade t1_verify 200", r.status_code == 200, str(r.status_code)+r.text[:120])
         if r.status_code == 200:
             check("cascade t1_verify used T1", r.json()["choices"][0]["message"].get("content") == "Hi from mock claude!", r.text[:160])

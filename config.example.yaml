@@ -134,14 +134,16 @@ planner_worker:
 # ---------------------------------------------------------------------
 cascade:
   solve:
-    router: { provider: openai, model: gpt-4o-mini }
+    # tier is chosen by the USER's reasoning effort (Codex model_reasoning_effort
+    # -> reasoning.effort). low = cheap/fast, high = T1/expensive.
     tiers:
       - {name: L0, provider: openai, model: gpt-4o-mini, reasoning_effort: none}
       - {name: L1, provider: openai, model: gpt-4o, reasoning_effort: low}
-      - {name: L2, provider: openai, model: gpt-4o, reasoning_effort: high}   # T1 floor
-    consensus_k: 3
-    strictness: balanced      # frugal / balanced / strict
-    t1_verify: false          # strict: have T1 verify/rewrite low-confidence results
+      - {name: L2, provider: openai, model: gpt-4o, reasoning_effort: high}   # T1
+    effort_map: {none: 0, low: 0, medium: 1, high: 2, very_high: 2}   # user effort -> tier index
+    default_tier: 2          # when the request carries no effort (default = top/T1)
+    consensus_k: 1
+    t1_verify: false         # strict: T1 verifies/rewrites a non-top-tier answer
 
 # ---------------------------------------------------------------------
 # Result cache (optional): caches non-stream upstream calls by (provider,model,body)

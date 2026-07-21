@@ -444,6 +444,14 @@ async def _handle_cascade(request: Request, wire: str, body: dict, model: str):
     caller = _caller_key(request)
     name = cascade_name(model)
     stream = bool(body.get("stream"))
+    # read the user's reasoning effort (Codex sends reasoning.effort in Responses,
+    # or reasoning_effort / model_reasoning_effort in chat)
+    effort = None
+    _r = body.get("reasoning")
+    if isinstance(_r, dict):
+        effort = _r.get("effort")
+    if not effort:
+        effort = body.get("reasoning_effort") or body.get("model_reasoning_effort")
     if wire == "responses":
         chat_body = responses_req_to_chat(body)
     elif wire == "anthropic":
@@ -453,7 +461,7 @@ async def _handle_cascade(request: Request, wire: str, body: dict, model: str):
     t0 = time.monotonic()
     try:
         result = await run_cascade(request.app.state.config, request.app.state.providers,
-                                   request.app.state.pool, chat_body, name, stream)
+                                   request.app.state.pool, chat_body, name, stream, effort=effort)
     except KeyError:
         return _error(404, f"Cascade pipeline `{name}` does not exist",
                       "invalid_request_error", "model_not_found")
