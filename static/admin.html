@@ -284,7 +284,7 @@
       unsaved: "Unsaved changes", save: "Save", discard: "Discard", cancel: "Cancel", confirm: "Confirm", confirm_delete: "Delete this item? This cannot be undone.",
       confirm_discard: "Discard all unsaved changes?", saved: "Config saved and hot-reloaded", save_fail: "Save failed", saving: "Saving…",
       enter_master_key: "Please enter the master key", auth_on: "Auth on", auth_off: "No auth", footer: "llm-gateway · local console · data stays on this machine",
-      models_count: "models", keys_count: "keys", expand_hint: "Click a card to expand",
+      models_count: "models", keys_count: "keys", expand_hint: "Click a card to expand", needs_reauth: "needs re-auth", cooled: "cooled",
       context: "Context", models: "Models", add_model: "Add model", preset: "Preset",
       preset_hint: "Pick a common provider to auto-fill type and base URL.",
       models_hint: "Context is optional (exposed via GET /v1/models).",
@@ -314,7 +314,7 @@
       unsaved: "有未保存的更改", save: "保存", discard: "放弃", cancel: "取消", confirm: "确认", confirm_delete: "确认删除该项？此操作不可撤销。",
       confirm_discard: "放弃所有未保存的更改？", saved: "配置已保存并热生效", save_fail: "保存失败", saving: "保存中…",
       enter_master_key: "请输入 Master Key", auth_on: "鉴权已开启", auth_off: "免鉴权", footer: "llm-gateway · 本地控制台 · 数据仅存于本机",
-      models_count: "个模型", keys_count: "个密钥", expand_hint: "点击卡片展开",
+      models_count: "个模型", keys_count: "个密钥", expand_hint: "点击卡片展开", needs_reauth: "需重新授权", cooled: "冷却中",
       context: "上下文", models: "模型", add_model: "添加模型", preset: "预设",
       preset_hint: "选择常见服务商可自动填入类型和 base URL。",
       models_hint: "上下文可选（通过 GET /v1/models 暴露）。",
@@ -576,14 +576,24 @@
     api("/admin/api/config",{method:"PUT",json:raw}).then(function(){ var authOn=!!raw.server.master_key; if(authOn){ masterKey=raw.server.master_key; localStorage.setItem(LS_KEY,masterKey);} else { masterKey=""; localStorage.removeItem(LS_KEY);} setAuthPill(authOn); clearDirty(); btn.textContent=t("save"); toast(t("saved")); init(); }).catch(function(e){ btn.textContent=t("save"); toast(t("save_fail")+": "+e.message,true); });
   }
 
-  function loadOverview(){ api("/admin/api/config").then(renderOverview).catch(function(){}); }
+  function loadOverview(){ api("/admin/api/config").then(function(cfg){ renderOverview(cfg); loadPool(); }).catch(function(){}); }
+  function loadPool(){ api("/admin/api/pool").then(function(res){
+    Object.keys(res||{}).forEach(function(n){
+      var cell=document.querySelector('td[data-pool="'+esc(n)+'"]'); if(!cell)return;
+      var old=cell.querySelector(".pool-bits"); if(old) old.remove();
+      var r=res[n]||{}; var bits=[];
+      if(r.needs_reauth&&r.needs_reauth.length){ bits.push('<span class="pill warn" style="font-size:11px;padding:2px 8px;">'+t("needs_reauth")+": "+r.needs_reauth.length+"</span>"); }
+      if(r.cooled>0){ bits.push('<span class="pill" style="font-size:11px;padding:2px 8px;">'+t("cooled")+": "+r.cooled+"/"+r.total+"</span>"); }
+      if(bits.length){ var d=document.createElement("div"); d.className="pool-bits"; d.style.cssText="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap;"; d.innerHTML=bits.join(""); cell.appendChild(d); }
+    });
+  }).catch(function(){}); }
   function renderOverview(cfg){ var s=cfg.server||{}, rl=cfg.rate_limit||{};
     $("#server-info").innerHTML='<table><tbody><tr><th style="width:120px;">'+t("listen")+'</th><td class="mono">'+esc(s.host||"-")+":"+esc(s.port||"-")+'</td></tr><tr><th>'+t("master_key")+'</th><td class="mono">'+(s.master_key?esc(s.master_key):'<span class="error-text">'+t("no_key_set")+'</span>')+'</td></tr><tr><th>'+t("rate_limit")+'</th><td>'+(rl.requests_per_minute?esc(rl.requests_per_minute)+t("per_min"):t("no_limit"))+'</td></tr></tbody></table>';
     var provs=cfg.providers||{}, names=Object.keys(provs);
     if(!names.length){ $("#providers-wrap").innerHTML='<div class="empty">'+t("no_provider")+'</div>'; }
     else { var ph='<table><thead><tr><th>Provider</th><th>'+t("type")+'</th><th>'+t("base_url")+'</th><th>'+t("col_keypool")+'</th><th>'+t("col_model")+'</th><th>'+t("col_health")+'</th></tr></thead><tbody>';
       names.forEach(function(n){ var p=provs[n]||{}; var keys=(p.keys||[]).map(function(k){return '<span class="chip gray mono">'+esc(k)+'</span>';}).join(""); var models=(p.models||[]).map(function(m){return '<span class="chip">'+esc(m)+'</span>';}).join("");
-        ph+="<tr><td><strong>"+esc(n)+"</strong></td><td>"+esc(p.type||"-")+"</td><td class='mono'>"+esc(p.base_url||"-")+"</td><td>"+(keys||"-")+"</td><td>"+(models||"-")+"</td><td data-health='"+esc(n)+"'><span class='dot unknown'></span><span style='color:var(--muted);font-size:12px;'>"+t("not_checked")+"</span></td></tr>"; });
+        ph+="<tr><td><strong>"+esc(n)+"</strong></td><td>"+esc(p.type||"-")+"</td><td class='mono'>"+esc(p.base_url||"-")+"</td><td data-pool='"+esc(n)+"'>"+(keys||"-")+"</td><td>"+(models||"-")+"</td><td data-health='"+esc(n)+"'><span class='dot unknown'></span><span style='color:var(--muted);font-size:12px;'>"+t("not_checked")+"</span></td></tr>"; });
       $("#providers-wrap").innerHTML=ph+"</tbody></table>"; }
     var al=cfg.aliases||{}, an=Object.keys(al);
     if(!an.length){ $("#aliases-wrap").innerHTML='<div class="empty">'+t("no_alias")+'</div>'; }
@@ -593,7 +603,7 @@
     Object.keys(provs).forEach(function(n){ var ms=(provs[n]||{}).models||[]; if(!ms.length)return; html+='<optgroup label="Provider: '+esc(n)+'">'; ms.forEach(function(m){html+='<option value="'+esc(m)+'">'+esc(n)+" / "+esc(m)+'</option>';}); html+='</optgroup>'; });
     sel.innerHTML=html||'<option value="">'+t("no_models")+'</option>';
   }
-  $("#btn-health").addEventListener("click", function(){ api("/admin/api/health").then(function(res){ Object.keys(res).forEach(function(n){ var cell=document.querySelector('td[data-health="'+esc(n)+'"]'); if(!cell)return; var r=res[n]; cell.innerHTML='<span class="dot '+(r.ok?'ok':'bad')+'"></span><span style="font-size:12px;">'+(r.ok?r.latency_ms+'ms':esc(r.error||'fail'))+'</span>'; }); }).catch(function(){ toast(t("health_fail"),true); }); });
+  $("#btn-health").addEventListener("click", function(){ api("/admin/api/health").then(function(res){ Object.keys(res).forEach(function(n){ var cell=document.querySelector('td[data-health="'+esc(n)+'"]'); if(!cell)return; var r=res[n]; cell.innerHTML='<span class="dot '+(r.ok?'ok':'bad')+'"></span><span style="font-size:12px;">'+(r.ok?r.latency_ms+'ms':esc(r.error||'fail'))+'</span>'; }); }).then(loadPool).catch(function(){ toast(t("health_fail"),true); }); });
 
   function loadUsage(){ api("/admin/api/usage/summary?days="+currentDays).then(renderUsage); api("/admin/api/usage/recent").then(renderRecent); }
   function renderUsage(d){ var tt=d.totals||{};

@@ -357,6 +357,33 @@ async def test_model(request: Request, _: None = Depends(require_auth)):
 # ----------------------------------------------------------------------
 # route registration: mount both /api/* and /admin/api/*, tolerating whether include_router adds prefix="/admin"
 # ----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+# key-pool runtime state (which keys are cooled / flagged needs-reauth)
+# ----------------------------------------------------------------------
+async def pool_status(request: Request, _: None = Depends(require_auth)):
+    """Per-provider key-pool runtime state: total / available / cooled counts and
+    the masked keys flagged needs-reauth (returned 401/403). Lets the dashboard
+    tell the operator which keys to rotate."""
+    pool = getattr(request.app.state, "pool", None)
+    config = _get_config(request)
+    items = _provider_items(request, config)
+    if pool is None or not items:
+        return {}
+    out: dict[str, Any] = {}
+    for name, pconf in items:
+        keys = pconf.get("keys") or []
+        total = len(keys)
+        available = pool.available(name) if hasattr(pool, "available") else total
+        reauth = pool.needs_reauth(name) if hasattr(pool, "needs_reauth") else []
+        out[name] = {
+            "total": total,
+            "available": available,
+            "cooled": max(0, total - available),
+            "needs_reauth": [_mask_key(k) for k in reauth],
+        }
+    return out
+
+
 for _prefix in ("", "/admin"):
     router.add_api_route(_prefix + "/api/config", get_config, methods=["GET"])
     router.add_api_route(_prefix + "/api/config/raw", get_config_raw, methods=["GET"])
@@ -365,3 +392,4 @@ for _prefix in ("", "/admin"):
     router.add_api_route(_prefix + "/api/usage/recent", usage_recent, methods=["GET"])
     router.add_api_route(_prefix + "/api/health", health, methods=["GET"])
     router.add_api_route(_prefix + "/api/test", test_model, methods=["POST"])
+    router.add_api_route(_prefix + "/api/pool", pool_status, methods=["GET"])

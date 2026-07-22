@@ -433,6 +433,16 @@ rate_limit:
             ok = {k: v.get("ok") for k, v in r.json().items()}
             check("admin health all ok", all(ok.values()), str(ok))
 
+        # 14c key-pool runtime state: openai keys were cooled by the boom test (transient backoff)
+        r = httpx.get(f"{ADMIN}/pool", headers=h)
+        check("admin pool 200", r.status_code == 200, str(r.status_code))
+        if r.status_code == 200:
+            pdata = r.json()
+            check("pool has openai", "openai" in pdata, str(list(pdata.keys())))
+            oi = pdata.get("openai", {})
+            check("pool openai cooled>0 after boom", oi.get("cooled", 0) > 0, str(oi))
+            check("pool exposes needs_reauth list", isinstance(oi.get("needs_reauth"), list), str(oi))
+
         # 14a admin auth: no key should 401 when master_key is non-empty
         check("admin no-key 401", httpx.get(f"{ADMIN}/config").status_code == 401)
 
