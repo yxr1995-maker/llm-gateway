@@ -49,12 +49,55 @@ async def close_client() -> None:
 
 
 class UpstreamError(Exception):
-    """Upstream returned non-2xx or the request failed; used by the router for key-pool failover."""
+    """Upstream returned non-2xx or the request failed; used by the router for key-pool failover.
 
-    def __init__(self, status_code: int, message: str):
+    Carries `retry_after` (seconds, parsed from the upstream Retry-After header) so the pool
+    can apply an accurate quota cooldown on 429 responses.
+    """
+
+    def __init__(self, status_code: int, message: str,
+                 retry_after: float | None = None, headers: dict | None = None):
         super().__init__(f"upstream {status_code}: {message}")
         self.status_code = status_code
         self.message = message
+        self.retry_after = retry_after
+        self.headers = headers or {}
+
+
+def parse_retry_after(headers) -> float | None:
+    """Parse a Retry-After header (delta-seconds or HTTP-date) to seconds; None if absent/unparseable."""
+    if headers is None:
+        return None
+    try:
+        raw = headers.get("retry-after") or headers.get("Retry-After")
+    except AttributeError:
+        return None
+    if not raw:
+        return None
+    raw = raw.strip()
+    try:
+        v = float(raw)
+        return v if v > 0 else None
+    except ValueError:
+        pass
+    # HTTP-date fallback (RFC 7231)
+    try:
+        from email.utils import parsedate_to_datetime
+        import time as _t
+        dt = parsedate_to_datetime(raw)
+        delta = dt.timestamp() - _t.time()
+        return delta if delta > 0 else None
+    except Exception:
+        return None
+
+
+def upstream_error_from_response(resp, max_bytes: int = 500) -> "UpstreamError":
+    """Build an UpstreamError from an httpx.Response, parsing Retry-After from its headers."""
+    try:
+        detail = resp.text[:max_bytes]
+    except Exception:
+        detail = ""
+    return UpstreamError(resp.status_code, detail, retry_after=parse_retry_after(resp.headers))
 
 
 class ProviderBase:

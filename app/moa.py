@@ -36,7 +36,7 @@ from typing import AsyncIterator
 import httpx
 
 from . import cache as _cache
-from .providers import UpstreamError
+from .providers import UpstreamError, parse_retry_after
 
 logger = logging.getLogger("llm-gateway.moa")
 
@@ -145,7 +145,7 @@ async def _call_chat(provider, provider_name, model, chat_body, pool, stream, se
             coro = lambda: provider.chat_completions(model, chat_body, key, stream)
             result = await (coro() if sem is None else _with_sem(sem, coro))
             if isinstance(result, httpx.Response) and result.status_code >= 400:
-                raise UpstreamError(result.status_code, result.text[:300])
+                raise UpstreamError(result.status_code, result.text[:300], retry_after=parse_retry_after(result.headers))
             pool.report_success(provider_name, key)
             if cache_key is not None and isinstance(result, httpx.Response) and result.status_code < 400:
                 try:
@@ -154,7 +154,9 @@ async def _call_chat(provider, provider_name, model, chat_body, pool, stream, se
                     pass
             return result
         except UpstreamError as exc:
-            pool.report_failure(provider_name, key); last = exc
+            outcome = pool.report_failure(provider_name, key, exc.status_code, exc.retry_after); last = exc
+            if outcome == "caller":
+                break  # request itself is bad (4xx non-429); rotating keys cannot help
         except Exception as exc:
             pool.report_failure(provider_name, key); last = exc
     raise last or RuntimeError(f"provider `{provider_name}` has no available upstream key")
@@ -174,11 +176,13 @@ async def _call_media(provider, provider_name, model, body, pool, kind, sem=None
             coro = lambda: fn(model, body, key)
             result = await (coro() if sem is None else _with_sem(sem, coro))
             if isinstance(result, httpx.Response) and result.status_code >= 400:
-                raise UpstreamError(result.status_code, result.text[:300])
+                raise UpstreamError(result.status_code, result.text[:300], retry_after=parse_retry_after(result.headers))
             pool.report_success(provider_name, key)
             return result
         except UpstreamError as exc:
-            pool.report_failure(provider_name, key); last = exc
+            outcome = pool.report_failure(provider_name, key, exc.status_code, exc.retry_after); last = exc
+            if outcome == "caller":
+                break  # request itself is bad (4xx non-429); rotating keys cannot help
         except Exception as exc:
             pool.report_failure(provider_name, key); last = exc
     raise last or RuntimeError(f"provider `{provider_name}` has no available upstream key")

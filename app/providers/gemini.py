@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 import httpx
 
-from . import ProviderBase, UpstreamError, get_client, register
+from . import ProviderBase, UpstreamError, get_client, parse_retry_after, register
 
 # Gemini finishReason -> OpenAI finish_reason
 _FINISH_MAP = {
@@ -354,7 +354,7 @@ class GeminiProvider(ProviderBase):
                 timeout=self.timeout,
             )
             if resp.status_code >= 400:
-                raise UpstreamError(resp.status_code, resp.text[:500])
+                raise UpstreamError(resp.status_code, resp.text[:500], retry_after=parse_retry_after(resp.headers))
             return httpx.Response(
                 200,
                 json=convert_response(resp.json(), model),
@@ -376,6 +376,6 @@ class GeminiProvider(ProviderBase):
         ) as resp:
             if resp.status_code >= 400:
                 detail = (await resp.aread())[:500].decode("utf-8", "replace")
-                raise UpstreamError(resp.status_code, detail)
+                raise UpstreamError(resp.status_code, detail, retry_after=parse_retry_after(resp.headers))
             async for chunk in convert_stream(resp.aiter_lines(), model, want_usage):
                 yield chunk

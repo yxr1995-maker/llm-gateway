@@ -17,7 +17,7 @@ from typing import AsyncIterator
 
 import httpx
 
-from . import ProviderBase, UpstreamError, get_client, register
+from . import ProviderBase, UpstreamError, get_client, parse_retry_after, register
 
 ANTHROPIC_VERSION = "2023-06-01"
 DEFAULT_MAX_TOKENS = 4096  # Anthropic requires max_tokens
@@ -426,7 +426,7 @@ class AnthropicProvider(ProviderBase):
                 url, json=payload, headers=headers, timeout=self.timeout
             )
             if resp.status_code >= 400:
-                raise UpstreamError(resp.status_code, resp.text[:500])
+                raise UpstreamError(resp.status_code, resp.text[:500], retry_after=parse_retry_after(resp.headers))
             # convert to OpenAI format and return a constructed response
             return httpx.Response(
                 200,
@@ -445,6 +445,6 @@ class AnthropicProvider(ProviderBase):
         ) as resp:
             if resp.status_code >= 400:
                 detail = (await resp.aread())[:500].decode("utf-8", "replace")
-                raise UpstreamError(resp.status_code, detail)
+                raise UpstreamError(resp.status_code, detail, retry_after=parse_retry_after(resp.headers))
             async for chunk in convert_stream(resp.aiter_lines(), model, want_usage):
                 yield chunk

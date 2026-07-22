@@ -19,7 +19,7 @@ import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .providers import UpstreamError, build_providers
+from .providers import UpstreamError, build_providers, parse_retry_after
 from .protocol import (
     responses_req_to_chat, chat_resp_to_responses, chat_stream_to_responses,
     anthropic_req_to_chat, chat_resp_to_anthropic, chat_stream_to_anthropic,
@@ -213,7 +213,7 @@ async def chat_completions(request: Request):
             result = await provider.chat_completions(real_model, body, key, stream)
             # openai_like non-stream returns the upstream response directly; judge status here
             if isinstance(result, httpx.Response) and result.status_code >= 400:
-                raise UpstreamError(result.status_code, result.text[:300])
+                raise UpstreamError(result.status_code, result.text[:300], retry_after=parse_retry_after(result.headers))
 
             if not stream:
                 data = _sanitize_chat_output(result.json())
@@ -241,8 +241,10 @@ async def chat_completions(request: Request):
             pool.report_success(provider_name, key)
             return _sse_response(_safe_stream(_chat_ensure_done(counted_stream(first, result)), _chat_error_tail()))
         except UpstreamError as exc:
-            pool.report_failure(provider_name, key)
+            outcome = pool.report_failure(provider_name, key, exc.status_code, exc.retry_after)
             last_msg = f"upstream error ({provider_name}): HTTP {exc.status_code} {exc.message[:200]}"
+            if outcome == "caller":
+                break  # request itself is bad (4xx non-429); rotating keys cannot help
             logger.warning("key failover: %s", last_msg)
         except Exception as exc:  # network/parse errors, fail over too
             pool.report_failure(provider_name, key)
@@ -559,7 +561,7 @@ async def _dispatch_unified(request: Request, wire: str) -> JSONResponse | Strea
             if passthrough:
                 result = await provider.responses(real_model, body, key, stream)
                 if isinstance(result, httpx.Response) and result.status_code >= 400:
-                    raise UpstreamError(result.status_code, result.text[:300])
+                    raise UpstreamError(result.status_code, result.text[:300], retry_after=parse_retry_after(result.headers))
                 if not stream:
                     data = _sanitize_responses_output(result.json())
                     pool.report_success(provider_name, key)
@@ -584,7 +586,7 @@ async def _dispatch_unified(request: Request, wire: str) -> JSONResponse | Strea
             chat_body["stream"] = stream
             result = await provider.chat_completions(real_model, chat_body, key, stream)
             if isinstance(result, httpx.Response) and result.status_code >= 400:
-                raise UpstreamError(result.status_code, result.text[:300])
+                raise UpstreamError(result.status_code, result.text[:300], retry_after=parse_retry_after(result.headers))
 
             if not stream:
                 chat_data = result.json()
@@ -614,8 +616,10 @@ async def _dispatch_unified(request: Request, wire: str) -> JSONResponse | Strea
                 tail = _anthropic_error_tail()
             return _sse_response(_safe_stream(conv, tail))
         except UpstreamError as exc:
-            pool.report_failure(provider_name, key)
+            outcome = pool.report_failure(provider_name, key, exc.status_code, exc.retry_after)
             last_msg = f"upstream error ({provider_name}): HTTP {exc.status_code} {exc.message[:200]}"
+            if outcome == "caller":
+                break  # request itself is bad (4xx non-429); rotating keys cannot help
             logger.warning("key failover: %s", last_msg)
         except Exception as exc:
             pool.report_failure(provider_name, key)
@@ -766,7 +770,7 @@ async def embeddings(request: Request):
         try:
             resp = await embed_fn(real_model, body, key)
             if isinstance(resp, httpx.Response) and resp.status_code >= 400:
-                raise UpstreamError(resp.status_code, resp.text[:300])
+                raise UpstreamError(resp.status_code, resp.text[:300], retry_after=parse_retry_after(resp.headers))
             data = resp.json()
             pool.report_success(provider_name, key)
             usage = data.get("usage") or {}
@@ -780,8 +784,10 @@ async def embeddings(request: Request):
             )
             return JSONResponse(content=data)
         except UpstreamError as exc:
-            pool.report_failure(provider_name, key)
+            outcome = pool.report_failure(provider_name, key, exc.status_code, exc.retry_after)
             last_msg = f"upstream error ({provider_name}): HTTP {exc.status_code} {exc.message[:200]}"
+            if outcome == "caller":
+                break  # request itself is bad (4xx non-429); rotating keys cannot help
             logger.warning("embeddings failover: %s", last_msg)
         except Exception as exc:
             pool.report_failure(provider_name, key)

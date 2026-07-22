@@ -14,7 +14,7 @@ import time
 
 import httpx
 
-from . import ProviderBase, UpstreamError, get_client, register
+from . import ProviderBase, UpstreamError, get_client, parse_retry_after, register
 
 
 @register("openai_like")
@@ -115,7 +115,7 @@ class OpenAILikeProvider(ProviderBase):
         ) as resp:
             if resp.status_code >= 400:
                 detail = (await resp.aread())[:500].decode("utf-8", "replace")
-                raise UpstreamError(resp.status_code, detail)
+                raise UpstreamError(resp.status_code, detail, retry_after=parse_retry_after(resp.headers))
             async for line in resp.aiter_lines():
                 # blank lines are SSE event separators; re-add the newline as-is
                 yield line.encode("utf-8") + b"\n"
