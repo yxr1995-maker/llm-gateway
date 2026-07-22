@@ -414,7 +414,14 @@ rate_limit:
             d = r.json()
             check("embeddings shape", isinstance(d.get("data"), list) and "embedding" in d["data"][0])
 
-        # 13 all keys fail -> 502 (boom model always 500)
+        # 13a caller error (4xx non-429) -> surface upstream 400, not a misleading 502,
+        # and do not burn the whole key pool retrying a malformed request (runs before the
+        # boom test, which cools every key via transient backoff)
+        r = httpx.post(f"{BASE}/chat/completions", headers=h,
+                       json={"model": "openai/badreq", "messages": [{"role": "user", "content": "hi"}]})
+        check("caller error 400 (not 502)", r.status_code == 400, str(r.status_code) + r.text[:120])
+
+        # 13b all keys fail -> 502 (boom model always 500)
         r = httpx.post(f"{BASE}/chat/completions", headers=h,
                        json={"model": "openai/boom", "messages": [{"role": "user", "content": "hi"}]})
         check("all keys fail 502", r.status_code == 502, str(r.status_code))

@@ -45,6 +45,23 @@ def _error(status: int, message: str, err_type: str = "server_error",
     )
 
 
+def _failover_response_status(last_outcome: str | None,
+                              last_status: int | None) -> tuple[int, str, str]:
+    """Pick the client-facing (status, type, code) after the key pool is exhausted
+    or a caller error broke failover.
+
+    - caller (4xx non-429): surface the upstream real status so the client can fix
+      its request instead of seeing a misleading 502.
+    - quota (429): surface 429 so the client knows to back off.
+    - credential / transient / no-attempt: 502 gateway error (upstream-side).
+    """
+    if last_outcome == "caller" and last_status:
+        return last_status, "invalid_request_error", "invalid_request_error"
+    if last_outcome == "quota":
+        return 429, "rate_limit_exceeded", "rate_limit_exceeded"
+    return 502, "upstream_error", "upstream_error"
+
+
 def _caller_key(request: Request) -> str:
     """Caller Bearer token (stats/rate-limit dimension)."""
     auth = request.headers.get("authorization") or ""
@@ -172,6 +189,8 @@ async def chat_completions(request: Request):
 
     t0 = time.monotonic()
     attempts = max(1, pool.size(provider_name))
+    last_outcome: str | None = None
+    last_status: int | None = None
     last_msg = f"provider `{provider_name}` has no available upstream key"
 
     async def record_stream_done(nchars: int) -> None:
@@ -243,6 +262,7 @@ async def chat_completions(request: Request):
         except UpstreamError as exc:
             outcome = pool.report_failure(provider_name, key, exc.status_code, exc.retry_after)
             last_msg = f"upstream error ({provider_name}): HTTP {exc.status_code} {exc.message[:200]}"
+            last_outcome, last_status = outcome, exc.status_code
             if outcome == "caller":
                 break  # request itself is bad (4xx non-429); rotating keys cannot help
             logger.warning("key failover: %s", last_msg)
@@ -251,12 +271,13 @@ async def chat_completions(request: Request):
             last_msg = f"upstream request failed ({provider_name}): {exc!r}"[:300]
             logger.warning("key failover: %s", last_msg)
 
-    # all keys failed: 502 in OpenAI error format
+    # pool exhausted or caller error broke failover: surface the fitting status
+    status, etype, ecode = _failover_response_status(last_outcome, last_status)
     await _record_stats(
         request, api_key=caller, model=model, provider=provider_name,
-        latency_ms=int((time.monotonic() - t0) * 1000), status=502, stream=int(stream),
+        latency_ms=int((time.monotonic() - t0) * 1000), status=status, stream=int(stream),
     )
-    return _error(502, last_msg, "upstream_error", "upstream_error")
+    return _error(status, last_msg, etype, ecode)
 
 
 @router.get("/v1/models")
@@ -549,6 +570,8 @@ async def _dispatch_unified(request: Request, wire: str) -> JSONResponse | Strea
 
     t0 = time.monotonic()
     attempts = max(1, pool.size(provider_name))
+    last_outcome: str | None = None
+    last_status: int | None = None
     last_msg = f"provider `{provider_name}` has no available upstream key"
 
     want_usage = wire == "responses"  # responses stream tries to include usage
@@ -618,6 +641,7 @@ async def _dispatch_unified(request: Request, wire: str) -> JSONResponse | Strea
         except UpstreamError as exc:
             outcome = pool.report_failure(provider_name, key, exc.status_code, exc.retry_after)
             last_msg = f"upstream error ({provider_name}): HTTP {exc.status_code} {exc.message[:200]}"
+            last_outcome, last_status = outcome, exc.status_code
             if outcome == "caller":
                 break  # request itself is bad (4xx non-429); rotating keys cannot help
             logger.warning("key failover: %s", last_msg)
@@ -626,9 +650,10 @@ async def _dispatch_unified(request: Request, wire: str) -> JSONResponse | Strea
             last_msg = f"upstream request failed ({provider_name}): {exc!r}"[:300]
             logger.warning("key failover: %s", last_msg)
 
+    status, etype, ecode = _failover_response_status(last_outcome, last_status)
     await _record_stats(request, api_key=caller, model=model, provider=provider_name,
-        latency_ms=int((time.monotonic()-t0)*1000), status=502, stream=int(stream))
-    return _error(502, last_msg, "upstream_error", "upstream_error")
+        latency_ms=int((time.monotonic()-t0)*1000), status=status, stream=int(stream))
+    return _error(status, last_msg, etype, ecode)
 
 
 def _sanitize_responses_output(data: dict) -> dict:
@@ -761,6 +786,8 @@ async def embeddings(request: Request):
 
     t0 = time.monotonic()
     attempts = max(1, pool.size(provider_name))
+    last_outcome: str | None = None
+    last_status: int | None = None
     last_msg = f"provider `{provider_name}` has no available upstream key"
 
     for _ in range(attempts):
@@ -786,6 +813,7 @@ async def embeddings(request: Request):
         except UpstreamError as exc:
             outcome = pool.report_failure(provider_name, key, exc.status_code, exc.retry_after)
             last_msg = f"upstream error ({provider_name}): HTTP {exc.status_code} {exc.message[:200]}"
+            last_outcome, last_status = outcome, exc.status_code
             if outcome == "caller":
                 break  # request itself is bad (4xx non-429); rotating keys cannot help
             logger.warning("embeddings failover: %s", last_msg)
@@ -794,8 +822,9 @@ async def embeddings(request: Request):
             last_msg = f"upstream request failed ({provider_name}): {exc!r}"[:300]
             logger.warning("embeddings failover: %s", last_msg)
 
+    status, etype, ecode = _failover_response_status(last_outcome, last_status)
     await _record_stats(
         request, api_key=caller, model=model, provider=provider_name,
-        latency_ms=int((time.monotonic() - t0) * 1000), status=502, stream=0,
+        latency_ms=int((time.monotonic() - t0) * 1000), status=status, stream=0,
     )
-    return _error(502, last_msg, "upstream_error", "upstream_error")
+    return _error(status, last_msg, etype, ecode)

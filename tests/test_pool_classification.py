@@ -96,6 +96,17 @@ def test_sync_drops_state_for_removed_keys():
     check("removed key reauth dropped", p.needs_reauth("prov") == [])
 
 
+
+def test_failover_response_status_helper():
+    """router._failover_response_status picks the right client-facing status."""
+    from app.router import _failover_response_status as f
+    check("caller -> real 4xx", f("caller", 400) == (400, "invalid_request_error", "invalid_request_error"))
+    check("caller 404", f("caller", 404)[0] == 404)
+    check("quota -> 429", f("quota", 429) == (429, "rate_limit_exceeded", "rate_limit_exceeded"))
+    check("credential -> 502", f("credential", 401) == (502, "upstream_error", "upstream_error"))
+    check("transient -> 502", f("transient", 500) == (502, "upstream_error", "upstream_error"))
+    check("no-attempt -> 502", f(None, None) == (502, "upstream_error", "upstream_error"))
+
 def main():
     for fn in [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]:
         fn()
@@ -107,3 +118,14 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def test_failover_response_status_helper():
+    """router._failover_response_status picks the right client-facing status."""
+    from app.router import _failover_response_status as f
+    check("caller -> real 4xx", f("caller", 400) == (400, "invalid_request_error", "invalid_request_error"))
+    check("caller 404", f("caller", 404)[0] == 404)
+    check("quota -> 429", f("quota", 429) == (429, "rate_limit_exceeded", "rate_limit_exceeded"))
+    check("credential -> 502", f("credential", 401) == (502, "upstream_error", "upstream_error"))
+    check("transient -> 502", f("transient", 500) == (502, "upstream_error", "upstream_error"))
+    check("no-attempt -> 502", f(None, None) == (502, "upstream_error", "upstream_error"))

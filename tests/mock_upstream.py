@@ -107,6 +107,9 @@ class Handler(BaseHTTPRequestHandler):
     def _responses(self, body, stream):
         auth = self.headers.get("Authorization", "")
         key = auth[7:] if auth.startswith("Bearer ") else ""
+        if "badreq" in str(body.get("model", "")):
+            return self._send_json(400, {"error": {"message": "invalid request: badreq",
+                                                   "type": "invalid_request_error"}})
         if "boom" in str(body.get("model", "")) or key in BAD_KEYS:
             return self._send_json(500, {"error": {"message": f"responses key {key} failed"}})
         model = body.get("model", "?")
@@ -169,6 +172,9 @@ class Handler(BaseHTTPRequestHandler):
         key = auth[7:] if auth.startswith("Bearer ") else ""
         if "boom" in str(body.get("model", "")):
             return self._send_json(500, {"error": {"message": "model boom always fails"}})
+        if "badreq" in str(body.get("model", "")):
+            return self._send_json(400, {"error": {"message": "invalid request: badreq",
+                                                   "type": "invalid_request_error"}})
         if "tool-bad" in str(body.get("model", "")):
             # intentionally returns invalid arguments, to verify the gateway's tool repair
             bad = {"id": "chatcmpl-bad", "object": "chat.completion", "created": int(time.time()),
