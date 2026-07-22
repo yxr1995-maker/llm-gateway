@@ -70,10 +70,25 @@ def _caller_key(request: Request) -> str:
     return ""
 
 
+def _is_loopback(request: Request) -> bool:
+    """True if the caller is on the local machine (loopback Codex proxy mode)."""
+    client = getattr(request, "client", None)
+    host = (client.host if client else "") or ""
+    return host in ("127.0.0.1", "::1", "localhost", "")
+
+
 def _check_auth(request: Request) -> JSONResponse | None:
-    """Enforce auth when master_key is non-empty; return None if passed."""
-    master = request.app.state.config.master_key
+    """Enforce auth when master_key is non-empty; return None if passed.
+
+    When ``server.trust_loopback`` is set, local callers (Codex wired to the
+    gateway as its proxy) are accepted without a master key, mirroring how a
+    local proxy like opencodex / CC Switch trusts the on-machine Codex client.
+    """
+    cfg = request.app.state.config
+    master = cfg.master_key
     if not master:
+        return None
+    if cfg.trust_loopback and _is_loopback(request):
         return None
     if _caller_key(request) != master:
         return _error(

@@ -8,6 +8,7 @@ server:
   host: 0.0.0.0                     # listen address; for local use set 127.0.0.1
   port: 8080                        # listen port
   master_key: "sk-local-xxxx"       # key for calling the gateway / admin console; empty "" means no auth (local debugging only)
+  trust_loopback: false             # true = accept loopback (127.0.0.1) Codex calls without master_key; set true when wiring Codex to this gateway as its local proxy
 
 # ---------------------------------------------------------------------
 # Provider list：one entry per provider

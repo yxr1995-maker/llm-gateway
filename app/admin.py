@@ -384,6 +384,58 @@ async def pool_status(request: Request, _: None = Depends(require_auth)):
     return out
 
 
+# ----------------------------------------------------------------------
+# Codex config injection (wire the gateway into Codex as its provider)
+# ----------------------------------------------------------------------
+def _codex_config_path(explicit: str | None = None) -> str:
+    import os
+    if explicit:
+        return explicit
+    home = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
+    import os.path
+    return os.path.join(home, "config.toml")
+
+
+def _gateway_base_url(config: dict) -> str:
+    server = config.get("server") or {}
+    host = str(server.get("host") or "127.0.0.1")
+    if host in ("0.0.0.0", "::", ""):
+        host = "127.0.0.1"
+    port = server.get("port") or 8080
+    return f"http://{host}:{port}/v1"
+
+
+async def codex_inject_ep(
+    request: Request,
+    path: str | None = Query(None, description="Codex config.toml path (default: $CODEX_HOME/config.toml)"),
+    _: None = Depends(require_auth),
+):
+    """Inject the gateway into Codex config as its model provider (idempotent, backed up)."""
+    from .codex_inject import inject as _inject
+    config = _get_config(request)
+    return _inject(_codex_config_path(path), _gateway_base_url(config))
+
+
+async def codex_restore_ep(
+    request: Request,
+    path: str | None = Query(None, description="Codex config.toml path"),
+    _: None = Depends(require_auth),
+):
+    """Undo the injection (restores from backup)."""
+    from .codex_inject import restore as _restore
+    return _restore(_codex_config_path(path))
+
+
+async def codex_status_ep(
+    request: Request,
+    path: str | None = Query(None, description="Codex config.toml path"),
+    _: None = Depends(require_auth),
+):
+    """Report whether Codex config currently points at the gateway."""
+    from .codex_inject import status as _status
+    return _status(_codex_config_path(path))
+
+
 for _prefix in ("", "/admin"):
     router.add_api_route(_prefix + "/api/config", get_config, methods=["GET"])
     router.add_api_route(_prefix + "/api/config/raw", get_config_raw, methods=["GET"])
@@ -393,3 +445,6 @@ for _prefix in ("", "/admin"):
     router.add_api_route(_prefix + "/api/health", health, methods=["GET"])
     router.add_api_route(_prefix + "/api/test", test_model, methods=["POST"])
     router.add_api_route(_prefix + "/api/pool", pool_status, methods=["GET"])
+    router.add_api_route(_prefix + "/api/codex/inject", codex_inject_ep, methods=["POST"])
+    router.add_api_route(_prefix + "/api/codex/restore", codex_restore_ep, methods=["POST"])
+    router.add_api_route(_prefix + "/api/codex/status", codex_status_ep, methods=["GET"])

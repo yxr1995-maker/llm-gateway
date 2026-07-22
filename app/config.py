@@ -93,6 +93,13 @@ class GatewayConfig:
         return str(self.server.get("master_key") or "").strip()
 
     @property
+    def trust_loopback(self) -> bool:
+        """When true, loopback (127.0.0.1/::1) callers skip master_key auth.
+        Enable when wiring Codex to the gateway as its local proxy (mirrors how
+        opencodex / CC Switch trust the local Codex client)."""
+        return bool(self.server.get("trust_loopback"))
+
+    @property
     def raw(self) -> dict:
         return self._data
 

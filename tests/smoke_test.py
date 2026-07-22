@@ -442,6 +442,22 @@ rate_limit:
             oi = pdata.get("openai", {})
             check("pool openai cooled>0 after boom", oi.get("cooled", 0) > 0, str(oi))
             check("pool exposes needs_reauth list", isinstance(oi.get("needs_reauth"), list), str(oi))
+        # 14d Codex config injection (on a TEMP config; never touches live ~/.codex)
+        import tempfile as _tf, os as _os2
+        _fd, _tcfg = _tf.mkstemp(suffix=".toml")
+        _os2.write(_fd, b'model_provider = "custom"\n[model_providers.custom]\nbase_url = "http://127.0.0.1:15721/v1"\nwire_api = "responses"\n')
+        _os2.close(_fd)
+        r = httpx.post(f"{ADMIN}/codex/inject", headers=h, params={"path": _tcfg})
+        check("codex inject 200", r.status_code == 200, str(r.status_code) + r.text[:120])
+        _inj = r.json() if r.status_code == 200 else {}
+        check("codex inject points at gateway", _inj.get("injected") is True and "/v1" in str(_inj.get("base_url", "")), str(_inj))
+        check("codex inject backed up", _inj.get("backed_up") is True, str(_inj))
+        r = httpx.get(f"{ADMIN}/codex/status", headers=h, params={"path": _tcfg})
+        check("codex status injected", r.status_code == 200 and r.json().get("injected") is True, r.text[:120])
+        r = httpx.post(f"{ADMIN}/codex/restore", headers=h, params={"path": _tcfg})
+        check("codex restore 200", r.status_code == 200, str(r.status_code) + r.text[:120])
+        try: _os2.remove(_tcfg)
+        except OSError: pass
 
         # 14a admin auth: no key should 401 when master_key is non-empty
         check("admin no-key 401", httpx.get(f"{ADMIN}/config").status_code == 401)
