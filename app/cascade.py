@@ -117,7 +117,16 @@ async def run_cascade(cfg, providers, pool, chat_body: dict, name: str, stream: 
         if idx is None:
             idx = len(tiers) - 1
     else:
-        idx = int(pipe.get("default_tier", len(tiers) - 1))
+        router_cfg = pipe.get("router") or {}
+        if router_cfg.get("enabled"):
+            from .difficulty_router import DifficultyRouter
+            _rtr = DifficultyRouter.from_config(router_cfg, tiers)
+            _dec = await _rtr.predict(chat_body.get("messages") or [])
+            idx = _dec.tier_idx
+            logger.info("difficulty-router p_strong=%.2f tier=%d src=%s",
+                        _dec.p_strong, _dec.tier_idx, _dec.source)
+        else:
+            idx = int(pipe.get("default_tier", len(tiers) - 1))
     idx = max(0, min(int(idx), len(tiers) - 1))
     agent = tiers[idx]
     t1_verify = bool(pipe.get("t1_verify")) or pipe.get("strictness") == "strict"
