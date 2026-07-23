@@ -14,6 +14,7 @@
 - **Anthropic Messages 输入**：`POST /v1/messages`，只说 Anthropic 协议的客户端也能聚合到任意上游
 - **统一路由**：以 Responses 为枢纽，三种输入面任选其一均可到达任意上游（openai_like / anthropic / gemini），流式跨协议转换
 - **MOA 混合智能体**：多个 proposer 并行作答 + aggregator 综合，`model` 填 `moa:<name>` 触发
+- **级联 + 难度路由**：分档模型（便宜->贵）；无显式 effort 时，RouteLLM 式路由器按 query 难度自动选起始档（简单走便宜、难题升级），`model` 填 `cascade:<name>` 触发。默认关闭。
 - **工具韧性**：自动修复非法 `tool_call` JSON；上游报错或中途断流时合成合法收尾（`[DONE]` / `response.completed` / `message_stop`），客户端会话不因断流中断
 - **多 Provider**：OpenAI 兼容、Anthropic Messages、Google Gemini，自动格式转换
 - **模型别名**：短别名 -> `provider/model`，无感切换
@@ -147,6 +148,39 @@ planner_worker:
 
 `model` 填 `pw:solve` 触发。worker 失败自动跳过（记注记），不中断整体。复用 TPS 调度（并发上限、并行派发、末段流式）。
 
+## 级联（cascade）
+
+分档模型，从便宜快（L0）到贵（T1）。默认按客户端 `reasoning_effort` 选档（low=便宜、high=T1）。可选开启**难度路由器**（RouteLLM 式）：无显式 effort 时按 query 难度自动选起始档--简单问题走便宜档、难题走强档，避免简单对话也烧贵模型。路由器**默认关闭**，设 `router.enabled: true` 开启。
+
+```yaml
+cascade:
+  solve:
+    tiers:
+      - {name: L0, provider: openai,   model: gpt-4o-mini,   reasoning_effort: none}
+      - {name: L1, provider: deepseek, model: deepseek-chat, reasoning_effort: low}
+      - {name: L2, provider: openai,   model: gpt-4o,         reasoning_effort: high}   # T1
+    effort_map: {none: 0, low: 0, medium: 1, high: 2, very_high: 2}   # 用户 effort -> 档位
+    default_tier: 2          # 无 effort 且路由关 -> 最高/T1
+    consensus_k: 1           # 选中档采样 + 多数投票
+    t1_verify: false         # strict：T1 重写/校验非顶档答案
+    router:
+      enabled: false         # 改 true 开启难度路由
+      backend: rule          # rule（零依赖）| mf（训练好的矩阵分解，需 model_path + embedder）
+      high_thr: 0.7          # p(需强模型) >= high_thr -> 最高档
+      low_thr: 0.3           # <= low_thr -> 最低档
+      fallback_tier: 2
+```
+
+`model` 填 `cascade:solve` 触发，也可在 `aliases` 里别名（如 `solve: cascade/solve`）后用 `model: solve`。客户端显式 `reasoning_effort` 始终覆盖路由器。
+
+- **rule** 后端：零依赖启发式（代码块、长度、推理标记）--开箱即用；从日志收集 `p_strong` 后可训 `mf` 后端。
+- **mf** 后端：基于 query embedding 的训练矩阵分解打分（RouteLLM，arXiv:2406.18665）；`model_path` 指 `.pkl`，配 `embedder`。
+
+**成本**：把简单查询路由到便宜档，通常能把强模型调用压到 ~30%、质量损失 <3%（成本降 50%+）。跑 `python3 analyze_cpt.py`（读 `data/usage.db`）看你的实际强模型调用占比与投测节省。
+
+**测试**：`.venv/bin/python smoke_cascade_router.py`（桩上游）与 `.venv/bin/python live_test_solve.py`（真实网关 + 真实上游）。
+
+
 ## 管理控制台
 
 浏览器打开 `http://127.0.0.1:8080/`：
@@ -225,6 +259,7 @@ app/
   protocol.py        # responses↔chat、anthropic↔chat 转换（含流式）
   moa.py             # MOA（并行 proposer + 多模态分阶段流水线）
   planner_worker.py  # Planner-Worker（强 planner + 便宜 worker）
+  difficulty_router.py # 级联难度路由器（rule + MF 后端）
   providers/         # openai_like / anthropic / gemini 协议适配
   pool.py            # 密钥池：轮询 + 故障转移
   stats.py           # SQLite 用量统计（aiosqlite）

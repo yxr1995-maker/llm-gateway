@@ -15,6 +15,7 @@ A single-process FastAPI service that exposes an **OpenAI-compatible API** and f
 - **Unified routing**: Responses is the canonical hub — any input face (`/v1/chat/completions`, `/v1/responses`, `/v1/messages`) can reach any upstream (openai_like / anthropic / gemini), with cross-protocol streaming conversion
 - **MOA (Mixture-of-Agents)**: parallel proposers + aggregator synthesis, **or a staged multimodal pipeline** (text / vision / image-gen / video-gen) that chains models into a hybrid LLM; trigger with `model: moa:<name>`
 - **Planner-Worker**: a strong planner model decomposes the task and cheap worker models execute subtasks in parallel, then the planner synthesizes (optionally re-plans); trigger with `model: pw:<name>` — independent of MOA
+- **Cascade with difficulty router**: tiered models (cheap -> expensive); a RouteLLM-style router auto-picks the start tier by query difficulty when no explicit effort is given - simple queries hit the cheap tier, hard ones escalate; trigger with `model: cascade:<name>`. Default off.
 - **Media generation**: OpenAI-compatible image/video generation with async-task polling; mix generative models into pipelines
 - **Tool resilience**: auto-repairs malformed `tool_call` JSON; if the upstream errors or drops mid-stream, a valid terminator (`[DONE]` / `response.completed` / `message_stop`) is synthesized so the client session never breaks on a broken stream
 - **Multi-provider**: OpenAI-compatible, Anthropic Messages, Google Gemini — automatic format conversion
@@ -149,6 +150,39 @@ planner_worker:
 
 Trigger with `model: pw:solve`. Worker failures are skipped (noted), never aborting the run. Reuses the TPS scheduler (concurrency cap, parallel dispatch, streamed final synthesis).
 
+## Cascade (cascade)
+
+Tiered models from cheap/fast (L0) to expensive (T1). By default the tier is chosen by the client's `reasoning_effort` (low = cheap, high = T1). Optionally, a **difficulty router** (RouteLLM-style) auto-picks the start tier from the query itself when no effort is given - simple questions go to the cheap tier, hard ones to the strong tier - so trivial queries no longer pay for the expensive model. The router is **off by default**; set `router.enabled: true` to turn it on.
+
+```yaml
+cascade:
+  solve:
+    tiers:
+      - {name: L0, provider: openai,   model: gpt-4o-mini,   reasoning_effort: none}
+      - {name: L1, provider: deepseek, model: deepseek-chat, reasoning_effort: low}
+      - {name: L2, provider: openai,   model: gpt-4o,         reasoning_effort: high}   # T1
+    effort_map: {none: 0, low: 0, medium: 1, high: 2, very_high: 2}   # user effort -> tier index
+    default_tier: 2          # no effort + router off -> top/T1
+    consensus_k: 1           # samples + majority vote at the chosen tier
+    t1_verify: false         # strict: T1 rewrites/verifies a non-top-tier answer
+    router:
+      enabled: false         # flip to true to auto-route by difficulty
+      backend: rule          # rule (zero-dep) | mf (trained Matrix-Factorization, needs model_path + embedder)
+      high_thr: 0.7          # p(strong needed) >= high_thr -> top tier
+      low_thr: 0.3           # <= low_thr -> bottom tier
+      fallback_tier: 2
+```
+
+Trigger with `model: cascade:solve`, or alias it (e.g. `solve: cascade/solve` in `aliases`) and call `model: solve`. An explicit `reasoning_effort` from the client always overrides the router.
+
+- **rule** backend: zero-dependency heuristic (code fences, length, reasoning markers) - ships immediately; collect `p_strong` from logs to train the `mf` backend later.
+- **mf** backend: trained Matrix-Factorization scorer over query embeddings (RouteLLM, arXiv:2406.18665); point `model_path` at a `.pkl` and set an `embedder`.
+
+**Cost**: routing easy queries to the cheap tier typically cuts strong-model calls to ~30% at <3% quality loss (50%+ cost reduction). Run `python3 analyze_cpt.py` on `data/usage.db` to see your actual strong-call ratio and projected savings.
+
+**Tests**: `.venv/bin/python smoke_cascade_router.py` (stubbed upstream) and `.venv/bin/python live_test_solve.py` (real gateway + real upstream).
+
+
 ## Admin console
 
 Open `http://127.0.0.1:8080/` in a browser:
@@ -227,6 +261,7 @@ app/
   protocol.py        # responses<->chat, anthropic<->chat converters (incl. streaming)
   moa.py             # Mixture-of-Agents (parallel proposers + multimodal staged pipeline)
   planner_worker.py  # Planner-Worker pattern (strong planner + cheap workers)
+  difficulty_router.py # Cascade difficulty router (rule + MF backends)
   providers/         # openai_like / anthropic / gemini protocol adapters
   pool.py            # key pool: round-robin + failover
   stats.py           # SQLite usage stats (aiosqlite)
