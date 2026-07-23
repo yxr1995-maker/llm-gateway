@@ -108,6 +108,22 @@ class GatewayConfig:
         return dict(self._data)
 
     # ------------------------------------------------------------- model resolution
+    def resolve_alias(self, model: str) -> str:
+        """Expand an alias chain to its target string (no provider/model lookup).
+
+        Chainable and cycle-safe. Returns the input unchanged if not an alias.
+        Used by the router to expand aliases pointing at special triggers
+        (e.g. ``solve -> cascade/solve``) before the cascade/moa/pw dispatch.
+        """
+        seen: set[str] = set()
+        cur = model
+        while cur in self.aliases and cur not in seen:
+            seen.add(cur)
+            cur = str(self.aliases[cur])
+        if cur in self.aliases:  # cycle; stop here
+            cur = model
+        return cur
+
     def resolve_model(self, model: str) -> tuple[str, str]:
         """Resolve the request model name to (provider name, real model name).
 
@@ -121,13 +137,7 @@ class GatewayConfig:
             raise KeyError(model)
 
         # 1. alias resolution (aliases may point to aliases, cycle-safe)
-        seen: set[str] = set()
-        cur = model
-        while cur in self.aliases and cur not in seen:
-            seen.add(cur)
-            cur = str(self.aliases[cur])
-        if cur in self.aliases:  # cycle; stop here
-            cur = model
+        cur = self.resolve_alias(model)
 
         # 2. provider/model explicit form
         if "/" in cur:

@@ -172,6 +172,7 @@ async def chat_completions(request: Request):
 
     model = str(body.get("model") or "")
     stream = bool(body.get("stream"))
+    model = request.app.state.config.resolve_alias(model)
     if is_moa(model):
         return await _handle_moa(request, "chat", body, model)
     if is_pw(model):
@@ -555,6 +556,7 @@ async def _dispatch_unified(request: Request, wire: str) -> JSONResponse | Strea
 
     model = str(body.get("model") or "")
     stream = bool(body.get("stream"))
+    model = request.app.state.config.resolve_alias(model)
     if is_moa(model):
         return await _handle_moa(request, wire, body, model)
     if is_pw(model):
